@@ -1,0 +1,155 @@
+.include "m328pdef.inc"
+
+.ORG 0x0000
+RJMP start
+
+;configuracion para sincronizar computadora y micro por UART
+.equ F_CPU = 16000000
+.equ baud  = 9600
+.equ bps   = (F_CPU/16/baud) - 1   
+
+.equ DELAY_MS = 200 ;tiempo de activacion de salidas (ms)
+
+start:
+	;se inicializa comunicacion uart
+	ldi r16, LOW(bps)
+	ldi r17, HIGH(bps)
+	rcall initUART
+
+	;se configuran pines de plotter
+	rcall configurar
+
+main_loop:
+	;llamo a funcion para obtener caracter
+	call getc
+
+	;comparo el caracter con R, si son iguales el plotter se mueve derecha 1 vez
+    cpi r16, 'R'
+    breq hacer_derecha
+
+	;comparo el caracter con P, si son iguales el plotter hace una secuencia de movimientos para probar y ajustar tiempos
+    cpi r16, 'P'
+    breq hacer_prueba
+
+    rjmp main_loop
+
+;hacer movimientos y volver a main
+hacer_derecha:
+    derecha
+    rjmp main_loop
+
+hacer_prueba:
+    rcall prueba
+    rjmp main_loop
+
+prueba:
+    bajar
+    subir
+
+    derecha
+    izquierda
+
+    arriba
+    abajo
+
+    ret
+
+;configuracion comunicacion UART, registro 16 parte baja y registro 17 parte alta
+initUART:
+	sts UBRR0L, r16
+	sts UBRR0H, r17
+	ldi r16, (1<<RXEN0)|(1<<TXEN0) ; activar recepcion y transmicion de datos
+	sts UCSR0B, r16
+	ret
+
+
+;obtiene caracter
+getc:
+	lds r17, UCSR0A
+	sbrs r17, RXC0
+	rjmp getc
+	lds r16, UDR0
+	ret
+
+;configuramos salidas digitales plotter
+configurar:
+	ldi r20, 0b11111100
+	out DDRD, r20      ; PORTD como salida
+	ret
+
+;asignar palabras claves a seguimiento de comandos
+.macro bajar
+	ldi r20, 0b00000100
+	out PORTD, r20
+	rcall delay
+	ldi r20, 0x00
+	out PORTD, r20
+.endmacro
+
+.macro subir
+	ldi r20, 0b00001000
+	out PORTD, r20
+	rcall delay
+	ldi r20, 0x00
+	out PORTD, r20
+.endmacro
+
+.macro abajo
+	ldi r20, 0b00010000
+	out PORTD, r20
+	rcall delay
+	ldi r20, 0x00
+	out PORTD, r20
+.endmacro
+
+.macro arriba
+	ldi r20, 0b00100000
+	out PORTD, r20
+	rcall delay
+	ldi r20, 0x00
+	out PORTD, r20
+.endmacro
+
+.macro izquierda
+	ldi r20, 0b01000000
+	out PORTD, r20
+	rcall delay
+	ldi r20, 0x00
+	out PORTD, r20
+.endmacro
+
+.macro derecha
+	ldi r20, 0b10000000
+	out PORTD, r20
+	rcall delay
+	ldi r20, 0x00
+	out PORTD, r20
+.endmacro
+
+;delay de 1ms aproximadamente (16000 ciclos)
+delay_1ms:
+    ldi r21, 250
+
+d1:
+    ldi r22, 21
+
+d2:
+    dec r22
+    brne d2
+
+    dec r21
+    brne d1
+
+    ret
+
+;tiempo de activacion de salidas (a configurar)
+delay:
+    ldi r21, DELAY_MS
+
+delay_ms_loop:
+    rcall delay_1ms
+    dec r21
+    brne delay_ms_loop
+    ret
+
+		
