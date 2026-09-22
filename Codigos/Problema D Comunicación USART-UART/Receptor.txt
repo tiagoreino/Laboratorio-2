@@ -1,0 +1,211 @@
+.include "m328pdef.inc"
+
+.cseg
+.org 0x00
+rjmp inicio
+
+.equ f_cpu = 16000000
+.equ baud = 9600
+.equ bps = (f_cpu/16/baud) - 1
+.equ TABLA_7LEDS = 0x0200
+
+
+;===========================================================
+; INICIO
+;===========================================================
+
+inicio:
+    ; Inicializar Stack Pointer
+    ldi r16, HIGH(RAMEND)
+    out SPH, r16
+
+    ldi r16, LOW(RAMEND)
+    out SPL, r16
+
+
+    ; Inicializar UART
+    ldi r16, LOW(bps)
+    ldi r17, HIGH(bps)
+    rcall initUART
+
+
+    ; Configurar salidas y guardar tabla
+    rcall configurar
+
+
+;===========================================================
+; PROGRAMA PRINCIPAL
+;===========================================================
+
+main_loop:
+
+    rcall getnum           ; Recibe valor 0...7
+
+    mov r22, r16           ; Guardar valor recibido
+
+    rcall get_u            ; Obtener máscara desde la LUT
+
+
+    ; Comprobar si el valor recibido es 6 o 7
+    cpi r22, 6
+    brsh salida_PORTC
+
+
+    ;-------------------------------------------------------
+    ; Valores 0...5 -> PORTB
+    ;-------------------------------------------------------
+
+    out PORTB, r16
+
+    ; Apagar PORTC
+    ldi r18, 0x00
+    out PORTC, r18
+
+    rjmp main_loop
+
+
+;===========================================================
+; VALORES 6 Y 7 -> PORTC
+;===========================================================
+
+salida_PORTC:
+
+    ; Apagar PORTB
+    ldi r18, 0x00
+    out PORTB, r18
+
+    ; La máscara obtenida de la LUT se envía a PORTC
+    out PORTC, r16
+
+    rjmp main_loop
+
+
+;===========================================================
+; INICIALIZAR UART
+;===========================================================
+
+initUART:
+
+    sts UBRR0L, r16
+    sts UBRR0H, r17
+
+    ldi r16, (1<<RXEN0)|(1<<TXEN0)
+    sts UCSR0B, r16
+
+    ret
+
+
+;===========================================================
+; RECIBIR DATO POR UART
+;===========================================================
+
+getnum:
+
+    lds r17, UCSR0A
+    sbrs r17, RXC0
+    rjmp getnum
+
+    lds r16, UDR0
+
+    ret
+
+
+;===========================================================
+; DECODIFICAR VALOR RECIBIDO MEDIANTE LUT
+;===========================================================
+
+get_u:
+
+    mov r20, r16
+
+    ldi r28, LOW(TABLA_7LEDS)
+    ldi r29, HIGH(TABLA_7LEDS)
+
+    add r28, r20
+
+    clr r21
+    adc r29, r21
+
+    ld r16, Y
+
+    ret
+
+
+;===========================================================
+; CONFIGURAR SALIDAS
+;===========================================================
+
+configurar:
+
+    ; PB0 - PB5 como salidas
+    ldi r19, 0b00111111
+    out DDRB, r19
+
+    ; PC0 y PC1 como salidas
+    ldi r19, 0b00000011
+    out DDRC, r19
+
+
+    ; Inicialmente todas las salidas apagadas
+    ldi r19, 0x00
+    out PORTB, r19
+    out PORTC, r19
+
+
+    ; Guardar LUT en SRAM
+    rcall guardar_codigos
+
+    ret
+
+
+;===========================================================
+; TABLA DE DECODIFICACION
+;===========================================================
+
+guardar_codigos:
+
+    ldi r28, LOW(TABLA_7LEDS)
+    ldi r29, HIGH(TABLA_7LEDS)
+
+
+    ; 000 -> PB0
+    ldi r20, 0b00000001
+    st Y+, r20
+
+
+    ; 001 -> PB1
+    ldi r20, 0b00000010
+    st Y+, r20
+
+
+    ; 010 -> PB2
+    ldi r20, 0b00000100
+    st Y+, r20
+
+
+    ; 011 -> PB3
+    ldi r20, 0b00001000
+    st Y+, r20
+
+
+    ; 100 -> PB4
+    ldi r20, 0b00010000
+    st Y+, r20
+
+
+    ; 101 -> PB5
+    ldi r20, 0b00100000
+    st Y+, r20
+
+
+    ; 110 -> PC0
+    ldi r20, 0b00000001
+    st Y+, r20
+
+
+    ; 111 -> PC1
+    ldi r20, 0b00000010
+    st Y+, r20
+
+
+    ret
