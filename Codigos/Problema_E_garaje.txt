@@ -1,0 +1,56 @@
+.include "m2560def.inc"
+
+.ORG 0x0000
+RJMP start
+
+.equ F_CPU = 16000000
+.equ baud  = 9600
+.equ bps   = (F_CPU/16/baud) - 1
+
+.def entradas = r16
+.def salidas = r17
+
+;entradas
+ldi entradas, 0b00000000
+out DDRL, entradas
+
+; Pull-up internas
+ldi entradas, 0b00011111
+out PORTL, entradas
+
+;salidas
+ldi salidas, 0b00001111
+out DDRC, salidas
+
+
+start:
+	
+	ldi r16, HIGH(RAMEND)
+	out SPH, r16
+	ldi r16, LOW(RAMEND)
+	out SPL, r16
+
+	ldi r16, LOW(bps)
+	ldi r17, HIGH(bps)
+
+	rcall initUART
+
+main_loop:
+	rcall putc
+	ldi r16,0
+	rjmp main_loop
+
+initUART:
+	sts UBRR0L, r16
+	sts UBRR0J, r17
+	ldi r16, (1<<RXEN0)|(1<<TXEN0)
+	sts UCSR0B, r16
+	ret 
+
+putc:
+	lds r17, UCSR0A
+	sbrs r17, UDRE0
+	rjmp putc
+	sts UDR0, r16
+	ldi r16, 0
+	ret
