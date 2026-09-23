@@ -1,0 +1,51 @@
+.include "m2560def.inc"
+
+; Cambair nombres de registros y pines
+
+.def TEMP = R16 ; Registro trabajo temporal 
+.def MODO_ACTUAL = R17 ; Almacena opcion seleccionada (UART) 
+.def DATA_SPI = R18 ; Byte envía a matriz
+.def REG_SPI = R19 ; Comando se envia a controlador MAX7219
+
+.equ CS_PIN  = PB0 ; Latch
+.equ CLK_PIN = PB1 ; Reloj (Clock) 
+.equ DIN_PIN = PB2 ; Entrada de datos (Data In)
+
+
+
+.cseg ; Lo siguiente en memoria Flash (Código)
+.org 0x0000 ; Dirección de Reset de microcontrolador
+    rjmp INIT ; Salta rutina inicialización al encender
+
+.org URXC0addr ; Dirección vector de interrupción por recepción UART0 
+    rjmp ISR_UART_RX   ; Salta atender nuevo dato (UART)
+
+
+INIT:
+; Inicializar Puntero de Pila (Stack Pointer) en RAM
+    LDI TEMP, LOW(RAMEND)
+    OUT SPL, TEMP
+    LDI TEMP, HIGH(RAMEND)
+    OUT SPH, TEMP
+
+; Definir inicio 
+    LDI MODO_ACTUAL, '1'
+
+; Puerto B como salida digital
+    LDI TEMP, (1<<CS_PIN) | (1<<CLK_PIN) | (1<<DIN_PIN)
+    OUT DDRB, TEMP
+    SBI PORTB, CS_PIN  ; Pone CS en ALTO (desactivado inicialmente)
+
+; Configurar módulo UART0
+    LDI TEMP, 103
+    STS UBRR0L, TEMP ; Byte bajo de velocidad
+    CLR TEMP
+    STS UBRR0H, TEMP ; Byte alto de velocidad
+    LDI TEMP, (1<<RXEN0) | (1<<TXEN0) | (1<<RXCIE0) ; Habilita Recepción, Transmisión, Interrupción por RX
+    STS UCSR0B, TEMP
+    LDI TEMP, (1<<UCSZ01) | (1<<UCSZ00) ; Trama 8 bits de datos, 1 bit de parada, sin paridad
+    STS UCSR0C, TEMP
+
+; Inicializar controlador MAX7219 y activar interrupciones globales
+    rcall INIT_MAX7219
+    SEI ; Habilita el bit I del registro SREG (Interrupciones globales activas)    
