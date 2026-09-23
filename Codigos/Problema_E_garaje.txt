@@ -1,30 +1,36 @@
-.include "m2560def.inc"
+.include "m2560def.inc" ;libreria base para atmega2560
 
-.ORG 0x0000
-RJMP start
+;punteros y salto a programa principal
+.org 0x0000
+	rjmp start
 
+;puntero a interrupcion 4 puerto E4
+.org INT4addr
+	rjmp ISR_INT4
+
+;configuracion para comunicacion USART-UART
 .equ F_CPU = 16000000
 .equ baud  = 9600
 .equ bps   = (F_CPU/16/baud) - 1
 
+;cambiamos nombres de registros para comodidad
 .def entradas = r16
 .def salidas = r17
+.def flags = r18
 
-;entradas
-ldi entradas, 0b00000000
-out DDRL, entradas
+;cambiamos nombres a puertos de entrada por comodidad
+.equ AB = PL0
+.equ CE = PL1
+.equ FA = PL2
+.equ FC = PL3
 
-; Pull-up internas
-ldi entradas, 0b00011111
-out PORTL, entradas
-
-;salidas
-ldi salidas, 0b00001111
-out DDRC, salidas
-
+;cambiamos nombres a puertos de salida por comodidad
+.equ MOTOR_ABRIR  = PC0
+.equ MOTOR_CERRAR = PC1
+.equ BUZZER       = PC2
 
 start:
-	
+	;inicializacion de Uart
 	ldi r16, HIGH(RAMEND)
 	out SPH, r16
 	ldi r16, LOW(RAMEND)
@@ -33,24 +39,165 @@ start:
 	ldi r16, LOW(bps)
 	ldi r17, HIGH(bps)
 
+	;entradas
+	ldi entradas, 0b00000000
+	out DDRL, entradas
+
+	; Pull-up internas
+	ldi entradas, 0b00001111
+	out PORTL, entradas
+
+	; PE4 = entrada
+	cbi DDRE, PE4
+
+	; pull-up interna
+	sbi PORTE, PE4
+
+	;salidas
+	ldi salidas, 0b00000111
+	out DDRC, salidas
+
+	;inicializamos flags en 0
+	ldi flags, 0
+
+	; INT4 = flanco descendente
+	ldi r16, (1<<ISC41) | (0<<ISC40)
+	sts EICRB, r16
+
+	; habilitar INT4
+	ldi r16, (1<<INT4)
+	sts EIMSK, r16
+
+	; habilitar interrupciones globales
+	sei
+
+	;configuracion comunicacion UART
 	rcall initUART
 
 main_loop:
-	rcall putc
-	ldi r16,0
-	rjmp main_loop
+	ldi r16, 0
+	
+	;estado puerta abierta
+	puertaAbierta:
+
+		; salidas
+		cbi PORTC, PC0
+		cbi PORTC, PC1
+		cbi PORTC, PC2
+
+		; imprimir UNA SOLA VEZ
+		ldi ZH, HIGH(mensaje_abierta<<1)
+		ldi ZL, LOW(mensaje_abierta<<1)
+		rcall print_string
+
+		;consultamos cambio de estado
+		puertaAbierta_loop:
+
+			sbis PINL, PL1
+			rjmp puertaCerrandose
+
+			rjmp puertaAbierta_loop
+			
+rjmp main_loop
+
+;rutina de interrupcion
+ISR_INT4:
+    push r16
+    in r16, SREG
+    push r16
+
+    cbi PORTC, PC0
+    cbi PORTC, PC1
+    cbi PORTC, PC2
+    sbr flags, (1<<0)
+
+    pop r16
+    out SREG, r16
+    pop r16
+    reti
 
 initUART:
-	sts UBRR0L, r16
-	sts UBRR0J, r17
-	ldi r16, (1<<RXEN0)|(1<<TXEN0)
-	sts UCSR0B, r16
-	ret 
+    sts UBRR0L, r16
+    sts UBRR0H, r17
 
-putc:
-	lds r17, UCSR0A
-	sbrs r17, UDRE0
-	rjmp putc
-	sts UDR0, r16
-	ldi r16, 0
+    ldi r16, (1<<RXEN0)|(1<<TXEN0)
+    sts UCSR0B, r16
+    ret
+
+;guardamos las siguientes secuencias de bytes en memoria FLASH -> mensaje + nueva linea (13, 10) + terminar secuencia (0)
+mensaje_abierta:
+    .db "Puerta abierta", 13, 10, 0
+
+mensaje_cerrando:
+    .db "Puerta cerrando", 13, 10, 0
+
+mensaje_cerrada:
+    .db "Puerta cerrada", 13, 10, 0
+
+mensaje_abriendo:
+    .db "Puerta abriendo", 13, 10, 0
+
+mensaje_obstaculo:
+    .db "Obstaculo detectado", 13, 10, 0
+
+mensaje_seguridad:
+    .db "Movimiento detenido por seguridad", 13, 10, 0
+
+;subrutina imprecion de mensaje
+print_string:
+
+;leemos caracter y avanzamos una posicion
+next_char:
+    lpm r16, Z+
+
+    tst r16
+    breq fin_string
+
+;comprobamos si termino secuencia de bytes (¿== 0?)
+esperar_uart:
+    lds r17, UCSR0A
+    sbrs r17, UDRE0
+    rjmp esperar_uart
+
+    sts UDR0, r16
+    rjmp next_char
+
+fin_string:
+    ret
+
+delay:
+	ldi r20, 3
+	even_outer_db:
+		ldi r21, 200
+	outer_db:
+		ldi r22, 200
+	inner_db:
+		dec r22
+		brne inner_db
+		dec r21
+		brne outer_db
+		dec r20
+		brne even_outer_db
+		ret
+
+
+debounce:
+	rcall delay
+
+	sbis PINL, AB
+	rjmp debounce
+
+	sbis PINL, CE
+	rjmp debounce
+
+	ret
+
+
+confirmacion:
+	rcall delay
+
+	rcall debounce
+
+	andi r18, 0b11111110
+
 	ret
