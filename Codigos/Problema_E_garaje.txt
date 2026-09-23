@@ -2,11 +2,11 @@
 
 ;punteros y salto a programa principal
 .org 0x0000
-	rjmp start
-
-;puntero a interrupcion 4 puerto E4
-.org INT4addr
-	rjmp ISR_INT4
+	jmp start          
+	
+;puntero a interrupcion PCINT0 (Grupo 0)
+.org 0x0012            
+	jmp ISR_PCINT0     
 
 ;configuracion para comunicacion USART-UART
 .equ F_CPU = 16000000
@@ -19,71 +19,68 @@
 .def flags = r18
 
 ;cambiamos nombres a puertos de entrada por comodidad
-.equ AB = PL0
-.equ CE = PL1
-.equ FA = PL2
-.equ FC = PL3
+.equ AB = PA0
+.equ CE = PA1
+.equ FA = PA2
+.equ FC = PA3
 
 ;cambiamos nombres a puertos de salida por comodidad
 .equ MOTOR_ABRIR  = PC0
 .equ MOTOR_CERRAR = PC1
 .equ BUZZER       = PC2
 
+
 start:
-	;inicializacion de Uart
+	; inicializacion de stack pointer
 	ldi r16, HIGH(RAMEND)
 	out SPH, r16
 	ldi r16, LOW(RAMEND)
 	out SPL, r16
 
+	; configuracion comunicacion UART
 	ldi r16, LOW(bps)
 	ldi r17, HIGH(bps)
+	rcall initUART
 
-	;entradas
+	; entradas (Puerto A)
 	ldi entradas, 0b00000000
-	out DDRL, entradas
+	out DDRA, entradas
 
-	; Pull-up internas
+	; Pull-up internas Puerto A
 	ldi entradas, 0b00001111
-	out PORTL, entradas
+	out PORTA, entradas
 
-	; PE4 = entrada
-	cbi DDRE, PE4
+	; PIN DE EMERGENCIA: PB0 (PCINT0) como entrada con Pull-up
+	cbi DDRB, PB0
+	sbi PORTB, PB0    
 
-	; pull-up interna
-	sbi PORTE, PE4
-
-	;salidas
+	; salidas (Puerto C)
 	ldi salidas, 0b00000111
 	out DDRC, salidas
 
 	;inicializamos flags en 0
 	ldi flags, 0
 
-	; INT4 = flanco descendente
-	ldi r16, (1<<ISC41) | (0<<ISC40)
-	sts EICRB, r16
+	; habilitacion de PCINT
+	ldi r16, (1<<PCIE0)
+	sts PCICR, r16
 
-	; habilitar INT4
-	ldi r16, (1<<INT4)
-	sts EIMSK, r16
+	;desenmascaramos pin PCINT0 (PB0) en PCMSK0
+	ldi r16, (1<<PCINT0)
+	sts PCMSK0, r16
 
 	; habilitar interrupciones globales
 	sei
 
-	;configuracion comunicacion UART
-	rcall initUART
-
 main_loop:
-	ldi r16, 0
 	
-	;estado puerta abierta
+	; estado puerta abierta
 	puertaAbierta:
 
 		; salidas
-		cbi PORTC, PC0
-		cbi PORTC, PC1
-		cbi PORTC, PC2
+		cbi PORTC, MOTOR_ABRIR
+		cbi PORTC, MOTOR_CERRAR
+		cbi PORTC, BUZZER
 
 		; imprimir UNA SOLA VEZ
 		ldi ZH, HIGH(mensaje_abierta<<1)
@@ -92,25 +89,115 @@ main_loop:
 
 		;consultamos cambio de estado
 		puertaAbierta_loop:
-
-			sbis PINL, PL1
-			rjmp puertaCerrandose
-
+			sbis PINA, CE
+			jmp puertaAbierta_a_cerrar 
 			rjmp puertaAbierta_loop
+
+		puertaAbierta_a_cerrar:
+			andi flags, 0b11111110      ; borra cualquier flag vieja
+			jmp puertaCerrandose
 			
-rjmp main_loop
+	; estado puerta cerrandose
+	puertaCerrandose:
+		cbi PORTC, MOTOR_ABRIR
+		sbi PORTC, MOTOR_CERRAR
+		sbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_cerrando<<1)
+		ldi ZL, LOW(mensaje_cerrando<<1)
+		rcall print_string
+
+		puertaCerrandose_loop:
+			sbrc flags, 0               
+			jmp obstaculoDetectado
+			sbis PINA, FC
+			jmp puertaCerrada
+			rjmp puertaCerrandose_loop
+
+	; estado puerta cerrada
+	puertaCerrada:
+		cbi PORTC, MOTOR_ABRIR
+		cbi PORTC, MOTOR_CERRAR
+		cbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_cerrada<<1)
+		ldi ZL, LOW(mensaje_cerrada<<1)
+		rcall print_string
+
+		;consultamos cambio de estado
+		puertaCerrada_loop:
+			sbis PINA, AB
+			jmp puertaCerrada_a_abrir   
+			rjmp puertaCerrada_loop
+
+		puertaCerrada_a_abrir:
+			andi flags, 0b11111110      ; borra cualquier flag vieja
+			jmp puertaAbriendose
+
+	; estado puerta abriendose
+	puertaAbriendose:
+		sbi PORTC, MOTOR_ABRIR
+		cbi PORTC, MOTOR_CERRAR
+		sbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_abriendo<<1)
+		ldi ZL, LOW(mensaje_abriendo<<1)
+		rcall print_string
+
+		puertaAbriendose_loop:
+			sbrc flags, 0               
+			jmp obstaculoDetectado
+			sbis PINA, FA
+			jmp puertaAbierta
+			rjmp puertaAbriendose_loop
+
+	; estado obstaculo detectado
+	obstaculoDetectado:
+		cbi PORTC, MOTOR_ABRIR          
+		cbi PORTC, MOTOR_CERRAR
+		cbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_obstaculo<<1)
+		ldi ZL, LOW(mensaje_obstaculo<<1)
+		rcall print_string
+
+		ldi ZH, HIGH(mensaje_seguridad<<1)
+		ldi ZL, LOW(mensaje_seguridad<<1)
+		rcall print_string
+
+		obstaculoDetectado_loop:
+			sbis PINA, AB
+			jmp obstaculo_a_abrir
+			sbis PINA, CE
+			jmp obstaculo_a_cerrar
+			rjmp obstaculoDetectado_loop
+
+		;reinicia flag independientemente de la eleccion
+		obstaculo_a_abrir:
+			andi flags, 0b11111110      
+			jmp puertaAbriendose
+
+		obstaculo_a_cerrar:
+			andi flags, 0b11111110      
+			jmp puertaCerrandose
 
 ;rutina de interrupcion
-ISR_INT4:
+ISR_PCINT0:
     push r16
     in r16, SREG
     push r16
 
-    cbi PORTC, PC0
-    cbi PORTC, PC1
-    cbi PORTC, PC2
-    sbr flags, (1<<0)
+    ; Filtrar flanco: Solo actuar cuando el pin PB0 vaya a 0
+    in r16, PINB
+    sbrc r16, PB0
+    jmp fin_isr             
 
+    cbi PORTC, MOTOR_ABRIR
+    cbi PORTC, MOTOR_CERRAR
+    cbi PORTC, BUZZER
+    ldi flags, 1            ; Seteamos bandera de emergencia
+
+fin_isr:
     pop r16
     out SREG, r16
     pop r16
@@ -119,29 +206,9 @@ ISR_INT4:
 initUART:
     sts UBRR0L, r16
     sts UBRR0H, r17
-
     ldi r16, (1<<RXEN0)|(1<<TXEN0)
     sts UCSR0B, r16
     ret
-
-;guardamos las siguientes secuencias de bytes en memoria FLASH -> mensaje + nueva linea (13, 10) + terminar secuencia (0)
-mensaje_abierta:
-    .db "Puerta abierta", 13, 10, 0
-
-mensaje_cerrando:
-    .db "Puerta cerrando", 13, 10, 0
-
-mensaje_cerrada:
-    .db "Puerta cerrada", 13, 10, 0
-
-mensaje_abriendo:
-    .db "Puerta abriendo", 13, 10, 0
-
-mensaje_obstaculo:
-    .db "Obstaculo detectado", 13, 10, 0
-
-mensaje_seguridad:
-    .db "Movimiento detenido por seguridad", 13, 10, 0
 
 ;subrutina imprecion de mensaje
 print_string:
@@ -149,7 +216,6 @@ print_string:
 ;leemos caracter y avanzamos una posicion
 next_char:
     lpm r16, Z+
-
     tst r16
     breq fin_string
 
@@ -165,39 +231,16 @@ esperar_uart:
 fin_string:
     ret
 
-delay:
-	ldi r20, 3
-	even_outer_db:
-		ldi r21, 200
-	outer_db:
-		ldi r22, 200
-	inner_db:
-		dec r22
-		brne inner_db
-		dec r21
-		brne outer_db
-		dec r20
-		brne even_outer_db
-		ret
-
-
-debounce:
-	rcall delay
-
-	sbis PINL, AB
-	rjmp debounce
-
-	sbis PINL, CE
-	rjmp debounce
-
-	ret
-
-
-confirmacion:
-	rcall delay
-
-	rcall debounce
-
-	andi r18, 0b11111110
-
-	ret
+;guardamos las siguientes secuencias de bytes en memoria FLASH -> mensaje + nueva linea (13, 10) + terminar secuencia (0)
+mensaje_abierta:
+    .db "Puerta abierta", 13, 10, 0
+mensaje_cerrando:
+    .db "Puerta cerrando", 13, 10, 0
+mensaje_cerrada:
+    .db "Puerta cerrada", 13, 10, 0
+mensaje_abriendo:
+    .db "Puerta abriendo", 13, 10, 0
+mensaje_obstaculo:
+    .db "Obstaculo detectado", 13, 10, 0
+mensaje_seguridad:
+    .db "Movimiento detenido por seguridad", 13, 10, 0
