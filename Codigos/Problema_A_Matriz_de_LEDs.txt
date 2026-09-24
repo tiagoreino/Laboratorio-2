@@ -11,7 +11,9 @@
 .equ CLK_PIN = PB1 ; Reloj (Clock) 
 .equ DIN_PIN = PB2 ; Entrada de datos (Data In)
 
-
+.dseg
+.org SRAM_START + 8
+VELOCIDAD: .byte 1     ; Reserva 1 byte en RAM para la velocidad del delay
 
 .cseg ; Lo siguiente en memoria Flash (Código)
 .org 0x0000 ; Dirección de Reset de microcontrolador
