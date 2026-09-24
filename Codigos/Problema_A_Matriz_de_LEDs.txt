@@ -33,6 +33,10 @@ INIT:
 ; Definir inicio 
     LDI MODO_ACTUAL, '1'
 
+; CValor velocidad inicial 
+    LDI TEMP, 30
+    STS VELOCIDAD, TEMP
+
 ; Puerto B como salida digital
     LDI TEMP, (1<<CS_PIN) | (1<<CLK_PIN) | (1<<DIN_PIN)
     OUT DDRB, TEMP
@@ -51,3 +55,189 @@ INIT:
 ; Inicializar controlador MAX7219 y activar interrupciones globales
     rcall INIT_MAX7219
     SEI ; Habilita el bit I del registro SREG (Interrupciones globales activas)    
+
+
+
+
+
+
+; Desplazamiento
+DESLIZAR_TEXTO:
+    MOV R24, MODO_ACTUAL ; Guarda copia de modo con que inició animación
+
+; Limpieza buffer memoria SRAM (evitar valores basuar)
+    LDI YL, LOW(SRAM_START)
+    LDI YH, HIGH(SRAM_START)
+    CLR TEMP
+    LDI R20, 8
+LIMPIAR_RAM:
+    ST Y+, TEMP ; Pone cero 8 posiciones de memoria RAM
+    DEC R20
+    brne LIMPIAR_RAM
+
+CICLO_COLUMNAS: ; Lee nueva columna en la memoria Flash
+ 
+    LPM TEMP, Z+ ; Carga byte donde apunta Z e incrementa 
+    CPI TEMP, 0xFE ; Frin de frase? (0xFE)
+    breq FIN_DESLIZAR ; Termina 
+
+; Copia en registros el contenido del buffer (memoria temporal) para desplazarlo hacia izquierda
+    LDI YL, LOW(SRAM_START)
+    LDI YH, HIGH(SRAM_START)
+    LD R1, Y+ ; Lee la columna 0
+    LD R2, Y+
+    LD R3, Y+
+    LD R4, Y+
+    LD R5, Y+
+    LD R6, Y+
+    LD R7, Y+
+
+; Desplazamiento de columna a la izquierda
+    LDI YL, LOW(SRAM_START)
+    LDI YH, HIGH(SRAM_START)
+    ST Y+, R2 ; Columna 1 pasa a ser la 0
+    ST Y+, R3 
+    ST Y+, R4 
+    ST Y+, R5 
+    ST Y+, R6 
+    ST Y+, R7 
+    ST Y+, TEMP ; Inserta nuevo byte Flash en última columna 7
+
+ ; Actualización LEDs y realiza pausa
+    rcall MOSTRAR_BUFFER
+    rcall DELAY
+
+; Se envío orden duarnte espera
+    CP MODO_ACTUAL, R24
+    brne FIN_DESLIZAR_FORZADO ; Modo cambia se interrumpe desplazamiento
+
+    rjmp CICLO_COLUMNAS ; Siguiente byte de texto
+
+FIN_DESLIZAR:
+    RET
+
+FIN_DESLIZAR_FORZADO:
+    RET
+
+MOSTRAR_BUFFER:
+    ; Envía el contenido del buffer (SRAM) a las 8 filas físicas del MAX7219 
+    LDI YL, LOW(SRAM_START) ; Puntero Y a inicio de la memoria
+    LDI YH, HIGH(SRAM_START)
+    LDI REG_SPI, 1 ; Comienza Fila 1
+ENVIAR_PASO:
+    LD DATA_SPI, Y+ ; Carga dato de RAM
+    RCALL SEND_MAX7219 ; Envía Fila, Dato a MAX7219
+    INC REG_SPI ; Siguiente Fila
+    CPI REG_SPI, 9 ; Llega fila 9, solo hay 8
+    brne ENVIAR_PASO ; Si no terminó repite
+    RET ; Termina
+
+MOSTRAR_ESTATICO: ; Carga dibujo estático desde Flash
+   
+    MOV R24, MODO_ACTUAL
+    LDI REG_SPI, 1 ; Empieza en Fila 1
+ENVIAR_ESTATICO:
+    LPM DATA_SPI, Z+ ; Lee byte de dibujo de Flash
+    rcall SEND_MAX7219 ; Lo envía a la matriz
+    INC REG_SPI
+    CPI REG_SPI, 9 ; Hasta completar 8 filas
+    brne ENVIAR_ESTATICO
+    rcall DELAY ; Pausa
+    RET
+
+DELAY:
+    LDS R21, VELOCIDAD     
+D1: LDI R22, 120
+D2: LDI R23, 200
+D3: DEC R23
+    brne D3
+    DEC R22
+    brne D2
+    
+    CP MODO_ACTUAL, R24 ; Sale si recibe orden UART
+    brne CANCELAR_DELAY
+    
+    DEC R21
+    brne D1
+CANCELAR_DELAY:
+    RET
+
+
+INIT_MAX7219: ; Configuración inicial de registros internos de MAX7219
+    
+    LDI REG_SPI, 0x09 ; Modo matriz de puntos
+    LDI DATA_SPI, 0x00
+    rcall SEND_MAX7219
+
+    LDI REG_SPI, 0x0A ; Registro de Brillo
+    LDI DATA_SPI, 0x03 ; Brillo nivel 3/32
+    rcall SEND_MAX7219
+
+    LDI REG_SPI, 0x0B ; Límite escaneo
+    LDI DATA_SPI, 0x07 ; Habilita 8 filas
+    rcall SEND_MAX7219
+
+    LDI REG_SPI, 0x0C ; Modo Apagado/Encendido (Shutdown)
+    LDI DATA_SPI, 0x01 ; 0x01 Encendido
+    rcall SEND_MAX7219
+
+    LDI REG_SPI, 0x0F ; Test de pantalla
+    LDI DATA_SPI, 0x00 ; Desactiva test
+    rcall SEND_MAX7219
+    RET
+
+SEND_MAX7219: ; Envía 16 bits (8 de datos y 8 de dirección)
+    CBI PORTB, CS_PIN ; Baja Latch inicia transmisión
+    MOV TEMP, REG_SPI ; Carga dirección de registro
+    rcall SHIFT_OUT ; Desplaza 8 bits
+    MOV TEMP, DATA_SPI ; Carga byte de datos
+    rcall SHIFT_OUT ; Desplaza 8 bits
+    SBI PORTB, CS_PIN ; Sube Latch, fija datos enviados en matriz
+    RET
+
+SHIFT_OUT: ; Envío serie bit a bit 
+    LDI R20, 8
+BIT_LOOP:
+    CBI PORTB, CLK_PIN ; Pone línea reloj en bajo
+    SBRC TEMP, 7 ; Si Bit 7 = 0, salta siguiente línea
+    SBI PORTB, DIN_PIN ; Pone línea datos en alto si Bit 7 = 1
+    SBRS TEMP, 7 ; Si el Bit 7 = 1 salta siguiente línea
+    CBI PORTB, DIN_PIN ; Pone línea datos en bajo si Bit 7 = 0
+    SBI PORTB, CLK_PIN ; Sube reloj para ingresar  bit a registro de desplazamiento
+    LSL TEMP ; Desplaza registro una posición a la izquierda para próximo bit
+    DEC R20
+    brne BIT_LOOP ; Repite hasta enviar los 8 bits
+    RET
+
+
+ISR_UART_RX: ; Ejecucion automatica cuando se ingresa número por UART
+
+    LDS TEMP, UDR0 ; Copia carácter recibido en TEMP
+
+    CPI TEMP, '+' ; Revisa si es incremento de velocidad
+    BREQ MAS_VELOCIDAD
+
+    CPI TEMP, '-' ; Revisa si es decremento de velocidad
+    BREQ MENOS_VELOCIDAD
+
+    MOV MODO_ACTUAL, TEMP ; Si no es velocidad guarda opcion en MODO_ACTUAL
+    RETI
+
+MAS_VELOCIDAD:
+    LDS TEMP, VELOCIDAD
+    CPI TEMP, 5 ; Limite velocidad maxima
+    BREQ FIN_ISR_UART
+    SUBI TEMP, 5 ; Disminuye delay (aumenta velocidad)
+    STS VELOCIDAD, TEMP
+    RETI
+
+MENOS_VELOCIDAD:
+    LDS TEMP, VELOCIDAD
+    CPI TEMP, 80 ; Limite velocidad minima
+    BREQ FIN_ISR_UART
+    LDI R20, 5
+    ADD TEMP, R20 ; Aumenta delay (disminuye velocidad)
+    STS VELOCIDAD, TEMP
+
+FIN_ISR_UART:
+    RETI ; Retorna interrupción reactivando globales
