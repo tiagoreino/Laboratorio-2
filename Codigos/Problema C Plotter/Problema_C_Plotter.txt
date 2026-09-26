@@ -1,0 +1,591 @@
+.include "m328pdef.inc"
+
+.ORG 0x0000
+RJMP start
+
+
+;===========================================================
+; CONFIGURACION UART
+;===========================================================
+.equ F_CPU = 16000000
+.equ baud  = 9600
+.equ bps   = (F_CPU/16/baud) - 1
+
+;===========================================================
+; CONFIGURACION DE TIEMPO DE CADA PASO DE MOVIMIENTO
+;===========================================================
+.equ DELAY_MS = 10
+
+ldi r25, DELAY_MS
+
+;tiempo de pasos para mover manual el lapiz a la posición adecuada
+ldi r26, 30
+
+;tiempo de pasos para la secuencia para mover lapiz a la posición adecuada
+ldi r27, 255
+
+;=============================================================================
+; CODIGOS PARA EL ARREGLO DE MOVIMIENTOS TRADUCIDOS A NUMEROS 
+;=============================================================================
+.equ MOV_DERECHA    = 1
+.equ MOV_IZQUIERDA  = 2
+.equ MOV_ARRIBA     = 3
+.equ MOV_ABAJO      = 4
+.equ MOV_SUBIR      = 5
+.equ MOV_BAJAR      = 6
+.equ MOV_DIAGONAL   = 7
+.equ MOV_DIAGONAL2  = 8
+.equ FIN            = 0
+
+
+;===========================================================
+; MACROS
+;===========================================================
+.macro bajar
+    ldi r20, 0b00000100
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+.endmacro
+
+
+.macro subir
+    ldi r20, 0b00001000
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+.endmacro
+
+
+.macro abajo
+    ldi r20, 0b00010000
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+.endmacro
+
+
+.macro arriba
+    ldi r20, 0b00100000
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+.endmacro
+
+
+.macro izquierda
+    ldi r20, 0b01000000
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+.endmacro
+
+
+.macro derecha
+    ldi r20, 0b10000000
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+.endmacro
+
+
+;===========================================================
+; INICIO
+;===========================================================
+
+start:
+
+    ; Inicializar UART
+    ldi r16, LOW(bps)
+    ldi r17, HIGH(bps)
+
+    rcall initUART
+
+
+    ; PD2 - PD7 como salidas
+    ldi r20, 0b11111100
+    out DDRD, r20
+
+
+    ; Todas las salidas inicialmente apagadas
+    ldi r20, 0x00
+    out PORTD, r20
+
+;===========================================================
+; SALTO AL MAIN LOOP 
+;===========================================================
+
+rjmp main_loop
+
+;===========================================================
+; CONFIGURACION UART
+;===========================================================
+
+initUART:
+
+    sts UBRR0L, r16
+    sts UBRR0H, r17
+
+    ldi r16, (1<<RXEN0)|(1<<TXEN0)
+    sts UCSR0B, r16
+
+    ret
+
+
+;================================================================================================================================================
+; PROGRAMA PRINCIPAL PARA ELEGIR MOVIMIENTO MANUAL O FIGURA
+;================================================================================================================================================
+
+main_loop:
+
+    ; Obtener caracter desde UART
+    call getc
+
+    cpi r16, 'D'
+    breq salto_derecha
+
+    cpi r16, 'A'
+    breq salto_izquierda
+
+    cpi r16, 'W'
+    breq salto_arriba
+
+    cpi r16, 'S'
+    breq salto_abajo
+
+    cpi r16, 'Q'
+    breq salto_subir
+
+    cpi r16, 'E'
+    breq salto_bajar
+
+    cpi r16, 'C'
+    breq salto_circulo
+
+	cpi r16, 'T'
+    breq salto_triangulo
+
+	cpi r16, 'G'
+    breq salto_grimer
+
+	cpi r16, 'P'
+    breq salto_pentagrama
+
+	cpi r16, 'V'
+    breq salto_casita
+
+	cpi r16, 'F'
+    breq salto_secuencias
+
+    rjmp main_loop
+
+
+;-----------------------------------------------------------
+; Saltos cercanos
+;-----------------------------------------------------------
+
+salto_derecha:
+    rjmp hacer_derecha
+
+salto_izquierda:
+    rjmp hacer_izquierda
+
+salto_arriba:
+    rjmp hacer_arriba
+
+salto_abajo:
+    rjmp hacer_abajo
+
+salto_subir:
+    rjmp hacer_subir
+
+salto_bajar:
+    rjmp hacer_bajar
+
+salto_circulo:
+    rjmp hacer_circulo
+
+salto_triangulo:
+    rjmp hacer_triangulo
+
+salto_grimer:
+    rjmp hacer_grimer
+
+salto_pentagrama:
+    rjmp hacer_pentagrama
+
+salto_casita:
+    rjmp hacer_casita
+
+salto_secuencias:
+    rjmp hacer_secuencia
+
+
+;-----------------------------------------------------------
+; MOVIMIENTOS MANUALES
+;-----------------------------------------------------------
+
+hacer_derecha:
+    mov r28, r26
+    m1:
+        derecha
+	    dec r28
+        brne m1
+    rjmp main_loop
+
+hacer_izquierda:
+    mov r28, r26
+    m2:
+        izquierda
+	    dec r28
+        brne m2
+    rjmp main_loop
+
+hacer_arriba:
+    mov r28, r26
+    m3:
+        arriba
+	    dec r28
+        brne m3
+    rjmp main_loop
+
+hacer_abajo:
+    mov r28, r26
+    m4:
+        abajo
+	    dec r28
+        brne m4
+    rjmp main_loop
+
+hacer_subir:
+    subir
+    rjmp main_loop
+
+hacer_bajar:
+    bajar
+    rjmp main_loop
+
+
+;===========================================================
+; OBTENER CARACTER
+;===========================================================
+
+getc:
+
+    lds r17, UCSR0A
+
+    sbrs r17, RXC0
+    rjmp getc
+
+    lds r16, UDR0
+
+    ret
+
+
+;================================================================================================================================================
+; EJECUTAR FIGURAS EN AUTOMATICO
+;================================================================================================================================================
+
+hacer_circulo:
+    rcall ejecutar_circulo
+    rjmp main_loop
+
+ejecutar_circulo:
+    ldi ZL, LOW(CIRCULO*2)
+    ldi ZH, HIGH(CIRCULO*2)
+    rjmp siguiente_numero
+
+;___________________________
+
+hacer_triangulo:
+    rcall ejecutar_triangulo
+    rjmp main_loop
+
+ejecutar_triangulo:
+    ldi ZL, LOW(TRIANGULO*2)
+    ldi ZH, HIGH(TRIANGULO*2)
+    rjmp siguiente_numero
+
+;_____________________________
+
+hacer_grimer:
+    rcall ejecutar_grimer
+    rjmp main_loop
+
+ejecutar_grimer:
+    ldi ZL, LOW(GRIMER*2)
+    ldi ZH, HIGH(GRIMER*2)
+    rjmp siguiente_numero
+
+;_______________________________
+
+hacer_pentagrama:
+    rcall ejecutar_pentagrama
+    rjmp main_loop
+
+ejecutar_pentagrama:
+    ldi ZL, LOW(PENTAGRAMA*2)
+    ldi ZH, HIGH(PENTAGRAMA*2)
+    rjmp siguiente_numero
+
+;________________________________
+
+hacer_casita:
+    rcall ejecutar_casita
+    rjmp main_loop
+
+ejecutar_casita:
+    ldi ZL, LOW(CASITA*2)
+    ldi ZH, HIGH(CASITA*2)
+    rjmp siguiente_numero
+
+;-----------------------------------------
+; SECUENCIA DE TODAS LAS FIGURAS
+;-----------------------------------------
+hacer_secuencia:
+    rcall ejecutar_secuencia
+    rjmp main_loop
+
+ejecutar_secuencia:
+    ;____________________________________________________________________________ 
+    ; achicar figura configurando tiempo de pasos
+    ldi r25, 9
+	mov r29, r27 
+    ;CIRCULO _ bajamos lapiz -> comenzamos con la figura en la esquina de la hoja -> terminado subimos lapiz
+	rcall int_bajar
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+    rcall ejecutar_circulo
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall int_subir
+	rcall delay
+	s1:
+        ;corremos lapiz a la izquierda
+	    rcall int_derecha
+        dec r29
+        brne s1
+    ;_______________________________________________________________________________
+    ; achicar figura configurando tiempo de pasos
+    ldi r25, 13
+	mov r29, r27
+    ;TRIANGULO _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
+	rcall int_bajar
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+    rcall ejecutar_triangulo
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall int_subir
+	rcall delay
+	s2:
+        ;corremos lapiz a la izquierda
+	    rcall int_derecha
+        dec r29
+        brne s2
+    ;________________________________________________________________________________
+    ; achicar figura configurando tiempo de pasos
+    ldi r25, 9
+	mov r29, r27
+    ;GRIMER _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
+	rcall int_bajar
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+    rcall ejecutar_grimer
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall int_subir
+	rcall delay
+	s3:
+        ;corremos lapiz hacia abajo
+	    rcall int_abajo
+        dec r29
+        brne s3
+    ;__________________________________________________________________________________
+	; achicar figura configurando tiempo de pasos
+    ldi r25, 5
+    ;PENTAGRAMA _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
+	rcall int_bajar
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+    rcall ejecutar_pentagrama
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall int_subir
+	rcall delay
+	s4:
+        ;corremos lapiz a la derecha
+	    rcall int_derecha
+        dec r27
+        brne s4
+    ;__________________________________________________________________________________
+    ; achicar figura configurando tiempo de pasos
+    ldi r25, 5
+    ;CASITA _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
+	rcall int_bajar
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+    rcall ejecutar_casita
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall delay
+	rcall int_subir
+	rcall delay
+	s5:
+        ;corremos lapiz a la derecha
+	    rcall int_derecha
+        dec r27
+        brne s5   
+
+	ret
+
+;=================================================================================================================================================
+; INTERPRETAR Y EJECUTAR NUMERO GUARDADO EN r16
+;==================================================================================================================================================
+
+siguiente_numero:
+    lpm r16, Z+
+
+    cpi r16, FIN
+    breq fin_arreglo
+
+    rcall interpretar_numero
+
+    rjmp siguiente_numero
+
+
+fin_arreglo:
+    ret
+
+interpretar_numero:
+
+    cpi r16, MOV_DERECHA
+    breq int_derecha
+
+    cpi r16, MOV_IZQUIERDA
+    breq int_izquierda
+
+    cpi r16, MOV_ARRIBA
+    breq int_arriba
+
+    cpi r16, MOV_ABAJO
+    breq int_abajo
+
+    cpi r16, MOV_SUBIR
+    breq int_subir
+
+    cpi r16, MOV_BAJAR
+    breq int_bajar
+
+    cpi r16, MOV_DIAGONAL
+    breq int_diagonal
+
+	cpi r16, MOV_DIAGONAL2
+    breq int_diagonal2
+
+    ret
+
+;=================================================================================================================================================
+; ACCIONES
+;==================================================================================================================================================
+
+int_derecha:
+    derecha
+    ret
+
+int_izquierda:
+    izquierda
+    ret
+
+int_arriba:
+    arriba
+    ret
+
+int_abajo:
+    abajo
+    ret
+
+int_subir:
+    subir
+    ret
+
+
+int_bajar:
+    bajar
+    ret
+
+int_diagonal:
+
+    ; PD7 = derecha
+    ; PD5 = arriba
+    ; Las dos salidas se activan simultaneamente.
+
+    ldi r20, 0b10100000
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+
+    ret
+
+int_diagonal2:
+
+    ldi r20, 0b01100000
+    out PORTD, r20
+
+    rcall delay
+
+    ldi r20, 0x00
+    out PORTD, r20
+
+    ret
+
