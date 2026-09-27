@@ -1,6 +1,6 @@
 .include "m2560def.inc"
 
-; Cambair nombres de registros y pines
+; Cambiar nombres de registros y pines
 
 .def TEMP = R16 ; Registro trabajo temporal 
 .def MODO_ACTUAL = R17 ; Almacena opcion seleccionada (UART) 
@@ -276,6 +276,12 @@ BIT_LOOP:
 
 
 ISR_UART_RX: ; Ejecucion automatica cuando se ingresa número por UART
+    push r0
+    in r0, SREG
+    push r0
+    push TEMP
+    push R20
+
 
     LDS TEMP, UDR0 ; Copia carácter recibido en TEMP
 
@@ -286,26 +292,33 @@ ISR_UART_RX: ; Ejecucion automatica cuando se ingresa número por UART
     BREQ MENOS_VELOCIDAD
 
     MOV MODO_ACTUAL, TEMP ; Si no es velocidad guarda opcion en MODO_ACTUAL
-    RETI
+    rjmp FIN_ISR_UART_RX
 
 MAS_VELOCIDAD:
     LDS TEMP, VELOCIDAD
     CPI TEMP, 5 ; Limite velocidad maxima
-    BREQ FIN_ISR_UART
+    BREQ FIN_ISR_UART_RX 
     SUBI TEMP, 5 ; Disminuye delay (aumenta velocidad)
     STS VELOCIDAD, TEMP
-    RETI
+    rjmp FIN_ISR_UART_RX
 
 MENOS_VELOCIDAD:
     LDS TEMP, VELOCIDAD
     CPI TEMP, 80 ; Limite velocidad minima
-    BREQ FIN_ISR_UART
+    BREQ FIN_ISR_UART_RX   
     LDI R20, 5
     ADD TEMP, R20 ; Aumenta delay (disminuye velocidad)
     STS VELOCIDAD, TEMP
+    rjmp FIN_ISR_UART_RX
 
-FIN_ISR_UART:
-    RETI ; Retorna interrupción reactivando globales
+FIN_ISR_UART_RX:
+    pop R20
+    pop TEMP
+    pop r0
+    out SREG, r0
+    pop r0
+    reti
+
 ; Datos memoria flash (.db)
 Malla:
 ; ESPACIO
