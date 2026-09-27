@@ -210,7 +210,7 @@ initUART:
     sts UCSR0B, r16
     ret
 
-;subrutina imprecion de mensaje
+;subrutina impresion de mensaje
 print_string:
 
 ;leemos caracter y avanzamos una posicion

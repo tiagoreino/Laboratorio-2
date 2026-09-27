@@ -7,26 +7,31 @@ RJMP start
 ;===========================================================
 ; CONFIGURACION UART
 ;===========================================================
+
 .equ F_CPU = 16000000
 .equ baud  = 9600
 .equ bps   = (F_CPU/16/baud) - 1
 
+
 ;===========================================================
-; CONFIGURACION DE TIEMPO DE CADA PASO DE MOVIMIENTO
+; DELAYS
 ;===========================================================
-.equ DELAY_MS = 10
 
-ldi r25, DELAY_MS
+; Delay para movimientos manuales
+.equ DELAY_MS = 20
 
-;tiempo de pasos para mover manual el lapiz a la posición adecuada
-ldi r26, 30
+; Delay independiente de cada figura
+.equ DELAY_CIRCULO    = 5
+.equ DELAY_TRIANGULO  = 20
+.equ DELAY_GRIMER     = 10
+.equ DELAY_PENTAGRAMA = 5
+.equ DELAY_CASITA      = 5
 
-;tiempo de pasos para la secuencia para mover lapiz a la posición adecuada
-ldi r27, 255
 
-;=============================================================================
-; CODIGOS PARA EL ARREGLO DE MOVIMIENTOS TRADUCIDOS A NUMEROS 
-;=============================================================================
+;===========================================================
+; CODIGOS PARA EL ARREGLO DE MOVIMIENTOS
+;===========================================================
+
 .equ MOV_DERECHA    = 1
 .equ MOV_IZQUIERDA  = 2
 .equ MOV_ARRIBA     = 3
@@ -41,6 +46,7 @@ ldi r27, 255
 ;===========================================================
 ; MACROS
 ;===========================================================
+
 .macro bajar
     ldi r20, 0b00000100
     out PORTD, r20
@@ -107,33 +113,55 @@ ldi r27, 255
 .endmacro
 
 
+
 ;===========================================================
 ; INICIO
 ;===========================================================
 
 start:
 
+    ;---------------------------------------
+    ; Contadores
+    ;---------------------------------------
+
+    ldi r25, DELAY_MS
+    ldi r26, 20
+    ldi r27, 20
+
+
+    ;---------------------------------------
     ; Inicializar UART
+    ;---------------------------------------
+
     ldi r16, LOW(bps)
     ldi r17, HIGH(bps)
 
     rcall initUART
 
 
+    ;---------------------------------------
     ; PD2 - PD7 como salidas
+    ;---------------------------------------
+
     ldi r20, 0b11111100
     out DDRD, r20
 
 
-    ; Todas las salidas inicialmente apagadas
+    ;---------------------------------------
+    ; Salidas apagadas
+    ;---------------------------------------
+
     ldi r20, 0x00
     out PORTD, r20
 
-;===========================================================
-; SALTO AL MAIN LOOP 
-;===========================================================
 
-rjmp main_loop
+    ;---------------------------------------
+    ; Programa principal
+    ;---------------------------------------
+
+    rjmp main_loop
+
+
 
 ;===========================================================
 ; CONFIGURACION UART
@@ -150,14 +178,15 @@ initUART:
     ret
 
 
-;================================================================================================================================================
-; PROGRAMA PRINCIPAL PARA ELEGIR MOVIMIENTO MANUAL O FIGURA
-;================================================================================================================================================
+
+;===========================================================
+; PROGRAMA PRINCIPAL
+;===========================================================
 
 main_loop:
 
-    ; Obtener caracter desde UART
     call getc
+
 
     cpi r16, 'D'
     breq salto_derecha
@@ -180,27 +209,28 @@ main_loop:
     cpi r16, 'C'
     breq salto_circulo
 
-	cpi r16, 'T'
+    cpi r16, 'T'
     breq salto_triangulo
 
-	cpi r16, 'G'
+    cpi r16, 'G'
     breq salto_grimer
 
-	cpi r16, 'P'
+    cpi r16, 'P'
     breq salto_pentagrama
 
-	cpi r16, 'V'
+    cpi r16, 'V'
     breq salto_casita
 
-	cpi r16, 'F'
+    cpi r16, 'F'
     breq salto_secuencias
 
     rjmp main_loop
 
 
-;-----------------------------------------------------------
-; Saltos cercanos
-;-----------------------------------------------------------
+
+;===========================================================
+; SALTOS
+;===========================================================
 
 salto_derecha:
     rjmp hacer_derecha
@@ -239,53 +269,81 @@ salto_secuencias:
     rjmp hacer_secuencia
 
 
-;-----------------------------------------------------------
+
+;===========================================================
 ; MOVIMIENTOS MANUALES
-;-----------------------------------------------------------
+;===========================================================
 
 hacer_derecha:
-    mov r28, r26
-    m1:
-        derecha
-	    dec r28
-        brne m1
+
+m1:
+    derecha
+    dec r26
+    brne m1
+
+    ldi r26, 20
+
     rjmp main_loop
+
+
 
 hacer_izquierda:
-    mov r28, r26
-    m2:
-        izquierda
-	    dec r28
-        brne m2
+
+m2:
+    izquierda
+    dec r26
+    brne m2
+
+    ldi r26, 20
+
     rjmp main_loop
+
+
 
 hacer_arriba:
-    mov r28, r26
-    m3:
-        arriba
-	    dec r28
-        brne m3
+
+m3:
+    arriba
+    dec r26
+    brne m3
+
+    ldi r26, 20
+
     rjmp main_loop
+
+
 
 hacer_abajo:
-    mov r28, r26
-    m4:
-        abajo
-	    dec r28
-        brne m4
+
+m4:
+    abajo
+    dec r26
+    brne m4
+
+    ldi r26, 20
+
     rjmp main_loop
+
+
 
 hacer_subir:
+
     subir
+
     rjmp main_loop
 
+
+
 hacer_bajar:
+
     bajar
+
     rjmp main_loop
+
 
 
 ;===========================================================
-; OBTENER CARACTER
+; OBTENER CARACTER UART
 ;===========================================================
 
 getc:
@@ -300,197 +358,256 @@ getc:
     ret
 
 
-;================================================================================================================================================
-; EJECUTAR FIGURAS EN AUTOMATICO
-;================================================================================================================================================
+
+;===========================================================
+; CIRCULO
+;===========================================================
 
 hacer_circulo:
+
+    ; Delay propio del circulo
+    ldi r25, DELAY_CIRCULO
+
     rcall ejecutar_circulo
+
     rjmp main_loop
+
 
 ejecutar_circulo:
+
     ldi ZL, LOW(CIRCULO*2)
     ldi ZH, HIGH(CIRCULO*2)
+
     rjmp siguiente_numero
 
-;___________________________
+
+
+;===========================================================
+; TRIANGULO
+;===========================================================
 
 hacer_triangulo:
+
+    ; Delay propio del triangulo
+    ldi r25, DELAY_TRIANGULO
+
     rcall ejecutar_triangulo
+
     rjmp main_loop
+
 
 ejecutar_triangulo:
+
     ldi ZL, LOW(TRIANGULO*2)
     ldi ZH, HIGH(TRIANGULO*2)
+
     rjmp siguiente_numero
 
-;_____________________________
+
+
+;===========================================================
+; GRIMER
+;===========================================================
 
 hacer_grimer:
+
+    ; Delay propio del Grimer
+    ldi r25, DELAY_GRIMER
+
     rcall ejecutar_grimer
+
     rjmp main_loop
+
 
 ejecutar_grimer:
+
     ldi ZL, LOW(GRIMER*2)
     ldi ZH, HIGH(GRIMER*2)
+
     rjmp siguiente_numero
 
-;_______________________________
+
+
+;===========================================================
+; PENTAGRAMA
+;===========================================================
 
 hacer_pentagrama:
+
+    ; Delay propio del pentagrama
+    ldi r25, DELAY_PENTAGRAMA
+
     rcall ejecutar_pentagrama
+
     rjmp main_loop
+
 
 ejecutar_pentagrama:
+
     ldi ZL, LOW(PENTAGRAMA*2)
     ldi ZH, HIGH(PENTAGRAMA*2)
+
     rjmp siguiente_numero
 
-;________________________________
+
+
+;===========================================================
+; CASITA
+;===========================================================
 
 hacer_casita:
+
+    ; Delay propio de la casita
+    ldi r25, DELAY_CASITA
+
     rcall ejecutar_casita
+
     rjmp main_loop
+
 
 ejecutar_casita:
+
     ldi ZL, LOW(CASITA*2)
     ldi ZH, HIGH(CASITA*2)
+
     rjmp siguiente_numero
 
-;-----------------------------------------
+
+
+;===========================================================
 ; SECUENCIA DE TODAS LAS FIGURAS
-;-----------------------------------------
+;===========================================================
+
 hacer_secuencia:
+
     rcall ejecutar_secuencia
+
     rjmp main_loop
 
+
+
 ejecutar_secuencia:
-    ;____________________________________________________________________________ 
-    ; achicar figura configurando tiempo de pasos
-    ldi r25, 9
-	mov r29, r27 
-    ;CIRCULO _ bajamos lapiz -> comenzamos con la figura en la esquina de la hoja -> terminado subimos lapiz
-	rcall int_bajar
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
+
+    ;=======================================================
+    ; CIRCULO
+    ;=======================================================
+	ldi r25, 255
+
+	rcall int_derecha
+	rcall int_derecha
+	rcall int_abajo
+	rcall int_abajo
+	rcall int_abajo
+
+    rcall int_bajar
+
+	ldi r25, DELAY_CIRCULO
     rcall ejecutar_circulo
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall int_subir
-	rcall delay
-	s1:
-        ;corremos lapiz a la izquierda
-	    rcall int_derecha
-        dec r29
-        brne s1
-    ;_______________________________________________________________________________
-    ; achicar figura configurando tiempo de pasos
-    ldi r25, 13
-	mov r29, r27
-    ;TRIANGULO _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
-	rcall int_bajar
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
+
+	ldi r25, 255
+    rcall int_subir
+
+
+    ;=======================================================
+    ; TRIANGULO
+    ;=======================================================
+	
+
+	rcall int_derecha
+	rcall int_derecha
+
+   
+
+    rcall int_bajar
+
+	ldi r25, DELAY_TRIANGULO
     rcall ejecutar_triangulo
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall int_subir
-	rcall delay
-	s2:
-        ;corremos lapiz a la izquierda
-	    rcall int_derecha
-        dec r29
-        brne s2
-    ;________________________________________________________________________________
-    ; achicar figura configurando tiempo de pasos
-    ldi r25, 9
-	mov r29, r27
-    ;GRIMER _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
-	rcall int_bajar
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
+	
+	ldi r25, 255
+    rcall int_subir
+
+
+    ;=======================================================
+    ; GRIMER
+    ;=======================================================
+
+	rcall int_derecha
+	rcall int_derecha
+	rcall int_derecha
+	rcall int_derecha
+
+    rcall int_bajar
+
+	ldi r25, DELAY_GRIMER
     rcall ejecutar_grimer
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall int_subir
-	rcall delay
-	s3:
-        ;corremos lapiz hacia abajo
-	    rcall int_abajo
-        dec r29
-        brne s3
-    ;__________________________________________________________________________________
-	; achicar figura configurando tiempo de pasos
-    ldi r25, 5
-    ;PENTAGRAMA _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
-	rcall int_bajar
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
+
+	ldi r25, 255
+    rcall int_subir
+
+
+    ;=======================================================
+    ; PENTAGRAMA
+    ;=======================================================
+	
+
+	rcall int_abajo
+
+    
+
+    rcall int_bajar
+
+	ldi r25, DELAY_PENTAGRAMA
     rcall ejecutar_pentagrama
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall int_subir
-	rcall delay
-	s4:
-        ;corremos lapiz a la derecha
-	    rcall int_derecha
-        dec r27
-        brne s4
-    ;__________________________________________________________________________________
-    ; achicar figura configurando tiempo de pasos
-    ldi r25, 5
-    ;CASITA _ bajamos lapiz -> comenzamos con la figura -> terminado subimos lapiz
-	rcall int_bajar
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
+
+	ldi r25, 255
+    rcall int_subir
+
+
+    ;=======================================================
+    ; CASITA
+    ;=======================================================
+	
+
+	rcall int_izquierda
+	rcall int_izquierda
+	rcall int_izquierda
+	rcall int_abajo
+	rcall int_abajo
+
+    
+
+    rcall int_bajar
+	ldi r25, DELAY_CASITA
+
     rcall ejecutar_casita
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall delay
-	rcall int_subir
-	rcall delay
-	s5:
-        ;corremos lapiz a la derecha
-	    rcall int_derecha
-        dec r27
-        brne s5   
 
-	ret
+	ldi r25, 255
+    rcall int_subir
 
-;=================================================================================================================================================
-; INTERPRETAR Y EJECUTAR NUMERO GUARDADO EN r16
-;==================================================================================================================================================
+	
+	rcall int_izquierda
+	rcall int_izquierda
+	rcall int_izquierda
+	rcall int_izquierda
+	rcall int_izquierda
+	rcall int_arriba
+	rcall int_arriba
+	rcall int_arriba
+	rcall int_arriba
+	rcall int_arriba
+	rcall int_arriba
+
+
+    ret
+
+
+
+;===========================================================
+; INTERPRETAR NUMERO
+;===========================================================
 
 siguiente_numero:
+
     lpm r16, Z+
 
     cpi r16, FIN
@@ -501,8 +618,12 @@ siguiente_numero:
     rjmp siguiente_numero
 
 
+
 fin_arreglo:
+
     ret
+
+
 
 interpretar_numero:
 
@@ -527,45 +648,65 @@ interpretar_numero:
     cpi r16, MOV_DIAGONAL
     breq int_diagonal
 
-	cpi r16, MOV_DIAGONAL2
+    cpi r16, MOV_DIAGONAL2
     breq int_diagonal2
 
     ret
 
-;=================================================================================================================================================
+
+
+;===========================================================
 ; ACCIONES
-;==================================================================================================================================================
+;===========================================================
 
 int_derecha:
+
     derecha
+
     ret
+
 
 int_izquierda:
+
     izquierda
+
     ret
+
 
 int_arriba:
+
     arriba
+
     ret
+
 
 int_abajo:
+
     abajo
+
     ret
 
+
 int_subir:
+
     subir
+
     ret
 
 
 int_bajar:
+
     bajar
+
     ret
 
-int_diagonal:
 
-    ; PD7 = derecha
-    ; PD5 = arriba
-    ; Las dos salidas se activan simultaneamente.
+
+;===========================================================
+; DIAGONAL 1
+;===========================================================
+
+int_diagonal:
 
     ldi r20, 0b10100000
     out PORTD, r20
@@ -576,6 +717,12 @@ int_diagonal:
     out PORTD, r20
 
     ret
+
+
+
+;===========================================================
+; DIAGONAL 2
+;===========================================================
 
 int_diagonal2:
 
@@ -590,24 +737,10 @@ int_diagonal2:
     ret
 
 
-;=================================================================================================================================================
-; CON ESTE ARREGLO PODEMOS CREAR LA SECUENCIA DE MOVIMIENTO QUE QUERAMOS, SIEMPRE TIENE QUE TERMINAR CON 0 PARA FIN DE LA SECUENCIA
-;.equ MOV_DERECHA    = 1
-;.equ MOV_IZQUIERDA  = 2
-;.equ MOV_ARRIBA     = 3
-;.equ MOV_ABAJO      = 4
-;.equ MOV_SUBIR      = 5
-;.equ MOV_BAJAR      = 6
-;.equ MOV_DIAGONAL   = 7
-;.equ MOV_DIAGONAL2  = 8
-;.equ FIN            = 0
-;==================================================================================================================================================
-
-;=================================================================================================================================================
-;CIRCULO
-;==================================================================================================================================================
 
 CIRCULO:
+
+	
 
     ;=======================================================
     ; (90,50) -> (50,90)
@@ -648,9 +781,11 @@ CIRCULO:
     ;=======================================================
 
     .db 1,1,1,1,1,1,3,1,1,1,1,1,3,1,1,1,3,1,1,3
-    .db 1,1,3,1,1,3,1,1,3,1,3,1,1,3,1,3,1,3,1,3
+    .db 1,1,3,1,1,3,1,1,3,1,1,3,1,1,3,1,1,3,1,3,1,3
     .db 1,3,1,3,1,3,1,3,3,1,3,1,3,3,1,3,3,1,3,3
-    .db 1,3,3,1,3,3,3,1,3,3,3,3,3,1,3,3,3,3,3,3
+    .db 1,3,3,1,3,3,3,1,3,3,3,3,3,1,3,3,3,3,3,3,3
+
+	
 
     ; FIN
     .db 0
@@ -661,11 +796,11 @@ CIRCULO:
 
 TRIANGULO:
 
-	.db 7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7
+	.db 7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7,7
 
-	.db 4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+	.db 4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
 
-	.db 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+	.db 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
 
 	.db 0
 
@@ -713,7 +848,7 @@ GRIMER:
     .db 4,2,4,2,4,2,2,2,3,2,2,2,3,2,3,2
     .db 2,2,4,2,2,2,3,2,2,3,2,2,4,2,2,4
     .db 2,4,2,2,4,2,4,2,4,4,4,1,4,1,1,3
-    .db 1,3,1,1,1,1,1,4,1,4,1,1,4,4
+    .db 1,3,1,1,1,1,1,4,1,4,1,1,4,4,4,1,1,1
 	.db 0
 
 
@@ -731,7 +866,7 @@ PENTAGRAMA:
     .db 3,1,3,3,3,3,1,3,3,3,1,3,3,3,3,2,3,2,2,2,3,3,2,2,3,2,3,2,2,3,3,2,2,3,3,2,2,3,2,2
     .db 3,3,2,2,3,3,2,2,3,3,2,2,3,2,2,2,3,3,2,2,3,3,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
     .db 1,1,1,1,1,1,1,1,1,1,1,1,3,3,1,3,3,1,1,3,3,3,1,3,3,3,1,3,3,3,1,1,3,3,3,1,3,3,3,1
-    .db 3,3,3,1,3,3,3,1,3,3,3,1,3,3
+    .db 3,3,3,1,3,3,3,1,3,3,3,1,3,3,1,1
     .db 0
 
 
@@ -748,22 +883,24 @@ CASITA:
     .db 3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,3,1,1,4,1,4,1,4,1,4,1,4
     .db 1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4,1,4
     .db 1,4,1,4,1,4,1,4,1,4,4,4,4,4,4,4,4,4,4,4,2,2,2,2,2,2,2,2,2,2,2,4,4,4,4,4,4,4,4,4
-    .db 4,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
+    .db 4,1,1,1,1,1,1,1,1,1,1,1,3,3,3,3,3,3,3,3,3,3,3,3,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
     .db 4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
     .db 2,2,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,3,2,2,2,2,2,2,2,2
     .db 2,2,2,2,2,2,2,2,2,2,2,2,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4,4
-    .db 4,4,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
-    .db 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+    .db 4,4,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
+    .db 2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2
 	.db 0
 
 
-;=================================================================================================================================================
-; DELAY - TIEMPO DE ACTIVACION DE SALIDAS
-;=================================================================================================================================================
+
+;===========================================================
+; DELAY
+;===========================================================
 
 delay:
 
     mov r21, r25
+
 
 delay_ms_loop:
 
@@ -774,13 +911,17 @@ delay_ms_loop:
 
     ret
 
+
+
 delay_1ms:
 
-    ldi r23, 100
+    ldi r23, 150
+
 
 d1:
 
     ldi r22, 250
+
 
 d2:
 
@@ -791,4 +932,3 @@ d2:
     brne d1
 
     ret
-
