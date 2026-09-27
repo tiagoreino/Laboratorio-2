@@ -1,0 +1,2697 @@
+.include "m328pdef.inc"
+
+.ORG 0x0000
+RJMP start
+
+.org OC1Aaddr
+    rjmp TIMER1_COMPA
+    ; Cuando ocurre la interrupción salta a TIMER1_COMPA
+
+
+.equ F_CPU = 16000000
+.equ baud  = 9600
+.equ bps   = (F_CPU/16/baud) - 1
+
+;--------------------------------------------------
+; LUT SEÑAL 1
+;--------------------------------------------------
+.equ TABLA_7SEG = 0x0256
+
+;--------------------------------------------------
+; LUT SEÑAL 2
+;--------------------------------------------------
+.equ TABLA_SENAL2 = 0x0256
+
+
+
+;==================================================
+; INICIO
+;==================================================
+
+start:
+
+;--------------------------------------------------
+; Se inicializa Stack Pointer
+;--------------------------------------------------
+
+ldi r16, HIGH(RAMEND)
+out SPH, r16
+
+ldi r16, LOW(RAMEND)
+out SPL, r16
+
+
+;--------------------------------------------------
+; Se inicializa comunicación UART
+;
+; PD0 = RX
+; PD1 = TX
+;--------------------------------------------------
+
+ldi r16, LOW(bps)
+ldi r17, HIGH(bps)
+
+rcall initUART
+
+
+;--------------------------------------------------
+; Se configuran puertos y se guarda la tabla
+;--------------------------------------------------
+
+call configurar
+call esperar_inicio
+
+
+;--------------------------------------------------
+; r24 será la posición actual dentro de la LUT
+;
+; 0,1,2,...,254,255,0,...
+;--------------------------------------------------
+
+clr r24
+
+
+;==================================================
+; NUEVO:
+; MOSTRAR MENÚ USART
+;
+; Aquí se guarda en r25:
+;
+; r25 = 1 -> señal 1
+; r25 = 2 -> señal 2
+;==================================================
+
+rcall MENU
+
+
+;--------------------------------------------------
+; Configuración de botones PD2 y PD3
+;
+; Pull-Down externo
+;
+; 0 = no presionado
+; 1 = presionado
+;--------------------------------------------------
+
+cbi DDRD, PD2
+cbi PORTD, PD2
+
+cbi DDRD, PD3
+cbi PORTD, PD3
+
+
+;--------------------------------------------------
+; r17:r18 = valor inicial OCR1A
+;--------------------------------------------------
+
+clr r17
+clr r18
+
+ldi r17, HIGH(15624)
+ldi r18, LOW(15624)
+
+
+;--------------------------------------------------
+; Configurar Timer1
+;--------------------------------------------------
+
+rcall CONFIG_TIMER1
+
+
+
+;==================================================
+; PROGRAMA PRINCIPAL
+;==================================================
+
+main_loop:
+
+rjmp ESPERAR_PULSACION
+
+
+
+;==================================================
+; INICIALIZAR UART
+;==================================================
+
+initUART:
+
+sts UBRR0L, r16
+sts UBRR0H, r17
+
+ldi r16, (1<<RXEN0)|(1<<TXEN0)
+sts UCSR0B, r16
+
+ret
+
+
+
+;==================================================
+; NUEVO:
+; MENÚ DE SELECCIÓN DE SEÑAL
+;==================================================
+
+MENU:
+
+
+;--------------------------------------------------
+; Salto de línea
+;--------------------------------------------------
+
+ldi r16, 13
+rcall putc
+
+ldi r16, 10
+rcall putc
+
+
+;--------------------------------------------------
+; Mostrar:
+;
+; MENU
+;--------------------------------------------------
+
+ldi r16, 'M'
+rcall putc
+
+ldi r16, 'E'
+rcall putc
+
+ldi r16, 'N'
+rcall putc
+
+ldi r16, 'U'
+rcall putc
+
+
+ldi r16, 13
+rcall putc
+
+ldi r16, 10
+rcall putc
+
+
+;--------------------------------------------------
+; Mostrar:
+;
+; 1 - SENAL 1
+;--------------------------------------------------
+
+ldi r16, '1'
+rcall putc
+
+ldi r16, ' '
+rcall putc
+
+ldi r16, '-'
+rcall putc
+
+ldi r16, ' '
+rcall putc
+
+ldi r16, 'S'
+rcall putc
+
+ldi r16, 'E'
+rcall putc
+
+ldi r16, 'N'
+rcall putc
+
+ldi r16, 'A'
+rcall putc
+
+ldi r16, 'L'
+rcall putc
+
+ldi r16, ' '
+rcall putc
+
+ldi r16, '1'
+rcall putc
+
+
+ldi r16, 13
+rcall putc
+
+ldi r16, 10
+rcall putc
+
+
+;--------------------------------------------------
+; Mostrar:
+;
+; 2 - SENAL 2
+;--------------------------------------------------
+
+ldi r16, '2'
+rcall putc
+
+ldi r16, ' '
+rcall putc
+
+ldi r16, '-'
+rcall putc
+
+ldi r16, ' '
+rcall putc
+
+ldi r16, 'S'
+rcall putc
+
+ldi r16, 'E'
+rcall putc
+
+ldi r16, 'N'
+rcall putc
+
+ldi r16, 'A'
+rcall putc
+
+ldi r16, 'L'
+rcall putc
+
+ldi r16, ' '
+rcall putc
+
+ldi r16, '2'
+rcall putc
+
+
+ldi r16, 13
+rcall putc
+
+ldi r16, 10
+rcall putc
+
+
+;--------------------------------------------------
+; Mostrar:
+;
+; Seleccione:
+;--------------------------------------------------
+
+ldi r16, 'S'
+rcall putc
+
+ldi r16, 'e'
+rcall putc
+
+ldi r16, 'l'
+rcall putc
+
+ldi r16, 'e'
+rcall putc
+
+ldi r16, 'c'
+rcall putc
+
+ldi r16, 'c'
+rcall putc
+
+ldi r16, 'i'
+rcall putc
+
+ldi r16, 'o'
+rcall putc
+
+ldi r16, 'n'
+rcall putc
+
+ldi r16, 'e'
+rcall putc
+
+ldi r16, ':'
+rcall putc
+
+ldi r16, ' '
+rcall putc
+
+
+
+;==================================================
+; ESPERAR OPCIÓN
+;==================================================
+
+MENU_ESPERAR:
+
+rcall getc
+
+
+;--------------------------------------------------
+; ¿Se recibió '1'?
+;--------------------------------------------------
+
+cpi r16, '1'
+breq MENU_SENAL1
+
+
+;--------------------------------------------------
+; ¿Se recibió '2'?
+;--------------------------------------------------
+
+cpi r16, '2'
+breq MENU_SENAL2
+
+
+;--------------------------------------------------
+; Cualquier otro carácter se ignora
+;--------------------------------------------------
+
+rjmp MENU_ESPERAR
+
+
+
+;==================================================
+; SELECCIONAR SEÑAL 1
+;==================================================
+
+MENU_SENAL1:
+
+
+;--------------------------------------------------
+; r25 indica señal seleccionada
+;--------------------------------------------------
+
+ldi r25, 1
+
+
+;--------------------------------------------------
+; Siempre comenzar la LUT desde muestra 0
+;--------------------------------------------------
+
+clr r24
+
+
+;--------------------------------------------------
+; Mostrar salto de línea
+;--------------------------------------------------
+
+ldi r16, 13
+rcall putc
+
+ldi r16, 10
+rcall putc
+
+
+ret
+
+
+
+;==================================================
+; SELECCIONAR SEÑAL 2
+;==================================================
+
+MENU_SENAL2:
+
+
+;--------------------------------------------------
+; r25 = 2
+;--------------------------------------------------
+
+ldi r25, 2
+
+
+;--------------------------------------------------
+; Comenzar desde muestra 0
+;--------------------------------------------------
+
+clr r24
+
+;--------------------------------------------------
+; Mostrar salto de línea
+;--------------------------------------------------
+
+ldi r16, 13
+rcall putc
+
+ldi r16, 10
+rcall putc
+
+
+ret
+
+
+
+;==================================================
+; WAIT
+;==================================================
+
+wait:
+
+call getc
+
+cpi r16, 0
+breq wait
+
+ldi r18, 1
+add r16, r18
+
+rcall putc
+
+ldi r16, 0
+
+rjmp wait
+
+
+
+;==================================================
+; TRANSMITIR POR UART
+;==================================================
+
+putc:
+
+lds r17, UCSR0A
+
+sbrs r17, UDRE0
+rjmp putc
+
+sts UDR0, r16
+
+ldi r16, 0
+
+ret
+
+
+
+;==================================================
+; RECIBIR POR UART
+;==================================================
+
+getc:
+
+lds r17, UCSR0A
+
+sbrs r17, RXC0
+rjmp getc
+
+lds r16, UDR0
+
+ret
+
+
+
+;==================================================
+; CONFIGURAR PUERTOS
+;==================================================
+
+configurar:
+
+
+;--------------------------------------------------
+; PC0-PC5:
+;
+; bits 0-5 del DAC
+;--------------------------------------------------
+
+ldi r20, 0b00111111
+out DDRC, r20
+
+clr r20
+out PORTC, r20
+
+
+;--------------------------------------------------
+; PB0 y PB1:
+;
+; bits 6-7 del DAC
+;
+; PB5:
+; LED L
+;--------------------------------------------------
+
+sbi DDRB, DDB0
+sbi DDRB, DDB1
+sbi DDRB, DDB5
+
+
+;--------------------------------------------------
+; Valores iniciales DAC = 0
+;--------------------------------------------------
+
+cbi PORTB, PB0
+cbi PORTB, PB1
+
+ret
+
+
+;==================================================
+; ESPERAR INICIO
+;==================================================
+
+esperar_inicio:
+
+nop
+
+ret
+
+
+
+;==================================================
+; BUSCA VALOR EN LUT
+;==================================================
+
+set_7seg_u:
+
+mov r0, r1
+
+call get_7seg_code
+
+mov r17, r20
+
+ret
+
+
+
+;==================================================
+; BUSCAR VALOR EN LUT DE SEÑAL 1
+;
+; r0 = índice
+;
+; r20 = LUT[r0]
+;==================================================
+
+get_7seg_code:
+
+;--------------------------------------------------
+; Guardar LUT de la señal 1
+;--------------------------------------------------
+
+call guardar_codigos
+
+
+ldi r28, LOW(TABLA_7SEG)
+ldi r29, HIGH(TABLA_7SEG)
+
+add r28, r0
+
+clr r19
+adc r29, r19
+
+ld r20, Y
+
+ret
+
+
+;==================================================
+; BUSCAR VALOR EN LUT DE SEÑAL 2
+;
+; r0 = índice
+;
+; r20 = LUT[r0]
+;==================================================
+
+get_senal2_code:
+
+;--------------------------------------------------
+; Guardar LUT de la señal 2
+;--------------------------------------------------
+
+call guardar_codigos_2
+
+
+ldi r28, LOW(TABLA_7SEG)
+ldi r29, HIGH(TABLA_7SEG)
+
+add r28, r0
+
+clr r19
+adc r29, r19
+
+ld r20, Y
+
+ret
+
+
+;==================================================
+; MOSTRAR LOS 8 BITS EN EL DAC
+;
+; PC0-PC5 = bits 0-5
+; PB0-PB1 = bits 6-7
+;==================================================
+
+SALIDA_DAC:
+
+
+;--------------------------------------------------
+; Guardar copia completa
+;--------------------------------------------------
+
+mov r21, r20
+
+
+;--------------------------------------------------
+; Bits 0-5
+;--------------------------------------------------
+
+andi r20, 0b00111111
+
+out PORTC, r20
+
+
+;--------------------------------------------------
+; Recuperar valor original
+;--------------------------------------------------
+
+mov r20, r21
+
+
+;--------------------------------------------------
+; Desplazar bits 6 y 7 hacia PB0-PB1
+;--------------------------------------------------
+
+lsr r20
+lsr r20
+lsr r20
+lsr r20
+lsr r20
+lsr r20
+
+
+andi r20, 0b00000011
+
+
+;--------------------------------------------------
+; Leer PORTB para conservar PB5
+;--------------------------------------------------
+
+in r21, PORTB
+
+
+;--------------------------------------------------
+; Borrar solamente PB0 y PB1
+; PB5 NO se modifica.
+;--------------------------------------------------
+
+andi r21, 0b11111100
+
+
+;--------------------------------------------------
+; Agregar nuevos bits
+;--------------------------------------------------
+
+or r21, r20
+
+out PORTB, r21
+
+
+ret
+
+
+
+;==================================================
+; LUT SEÑAL 1
+;
+; 128 muestras 0x00
+; 128 muestras 0xFF
+;==================================================
+
+guardar_codigos:
+
+
+;--------------------------------------------------
+; Y apunta al comienzo de la LUT
+;--------------------------------------------------
+
+ldi r28, LOW(TABLA_7SEG)
+ldi r29, HIGH(TABLA_7SEG)
+
+
+
+;--------------------------------------------------
+; Muestras 0 - 127 -> 0x00
+;--------------------------------------------------
+
+ldi r20, 0x00
+ST Y+, r20     ; 0
+
+ldi r20, 0x00
+ST Y+, r20     ; 1
+
+ldi r20, 0x00
+ST Y+, r20     ; 2
+
+ldi r20, 0x00
+ST Y+, r20     ; 3
+
+ldi r20, 0x00
+ST Y+, r20     ; 4
+
+ldi r20, 0x00
+ST Y+, r20     ; 5
+
+ldi r20, 0x00
+ST Y+, r20     ; 6
+
+ldi r20, 0x00
+ST Y+, r20     ; 7
+
+ldi r20, 0x00
+ST Y+, r20     ; 8
+
+ldi r20, 0x00
+ST Y+, r20     ; 9
+
+ldi r20, 0x00
+ST Y+, r20     ; 10
+
+ldi r20, 0x00
+ST Y+, r20     ; 11
+
+ldi r20, 0x00
+ST Y+, r20     ; 12
+
+ldi r20, 0x00
+ST Y+, r20     ; 13
+
+ldi r20, 0x00
+ST Y+, r20     ; 14
+
+ldi r20, 0x00
+ST Y+, r20     ; 15
+
+ldi r20, 0x00
+ST Y+, r20     ; 16
+
+ldi r20, 0x00
+ST Y+, r20     ; 17
+
+ldi r20, 0x00
+ST Y+, r20     ; 18
+
+ldi r20, 0x00
+ST Y+, r20     ; 19
+
+ldi r20, 0x00
+ST Y+, r20     ; 20
+
+ldi r20, 0x00
+ST Y+, r20     ; 21
+
+ldi r20, 0x00
+ST Y+, r20     ; 22
+
+ldi r20, 0x00
+ST Y+, r20     ; 23
+
+ldi r20, 0x00
+ST Y+, r20     ; 24
+
+ldi r20, 0x00
+ST Y+, r20     ; 25
+
+ldi r20, 0x00
+ST Y+, r20     ; 26
+
+ldi r20, 0x00
+ST Y+, r20     ; 27
+
+ldi r20, 0x00
+ST Y+, r20     ; 28
+
+ldi r20, 0x00
+ST Y+, r20     ; 29
+
+ldi r20, 0x00
+ST Y+, r20     ; 30
+
+ldi r20, 0x00
+ST Y+, r20     ; 31
+
+ldi r20, 0x00
+ST Y+, r20     ; 32
+
+ldi r20, 0x00
+ST Y+, r20     ; 33
+
+ldi r20, 0x00
+ST Y+, r20     ; 34
+
+ldi r20, 0x00
+ST Y+, r20     ; 35
+
+ldi r20, 0x00
+ST Y+, r20     ; 36
+
+ldi r20, 0x00
+ST Y+, r20     ; 37
+
+ldi r20, 0x00
+ST Y+, r20     ; 38
+
+ldi r20, 0x00
+ST Y+, r20     ; 39
+
+ldi r20, 0x00
+ST Y+, r20     ; 40
+
+ldi r20, 0x00
+ST Y+, r20     ; 41
+
+ldi r20, 0x00
+ST Y+, r20     ; 42
+
+ldi r20, 0x00
+ST Y+, r20     ; 43
+
+ldi r20, 0x00
+ST Y+, r20     ; 44
+
+ldi r20, 0x00
+ST Y+, r20     ; 45
+
+ldi r20, 0x00
+ST Y+, r20     ; 46
+
+ldi r20, 0x00
+ST Y+, r20     ; 47
+
+ldi r20, 0x00
+ST Y+, r20     ; 48
+
+ldi r20, 0x00
+ST Y+, r20     ; 49
+
+ldi r20, 0x00
+ST Y+, r20     ; 50
+
+ldi r20, 0x00
+ST Y+, r20     ; 51
+
+ldi r20, 0x00
+ST Y+, r20     ; 52
+
+ldi r20, 0x00
+ST Y+, r20     ; 53
+
+ldi r20, 0x00
+ST Y+, r20     ; 54
+
+ldi r20, 0x00
+ST Y+, r20     ; 55
+
+ldi r20, 0x00
+ST Y+, r20     ; 56
+
+ldi r20, 0x00
+ST Y+, r20     ; 57
+
+ldi r20, 0x00
+ST Y+, r20     ; 58
+
+ldi r20, 0x00
+ST Y+, r20     ; 59
+
+ldi r20, 0x00
+ST Y+, r20     ; 60
+
+ldi r20, 0x00
+ST Y+, r20     ; 61
+
+ldi r20, 0x00
+ST Y+, r20     ; 62
+
+ldi r20, 0x00
+ST Y+, r20     ; 63
+
+ldi r20, 0x00
+ST Y+, r20     ; 64
+
+ldi r20, 0x00
+ST Y+, r20     ; 65
+
+ldi r20, 0x00
+ST Y+, r20     ; 66
+
+ldi r20, 0x00
+ST Y+, r20     ; 67
+
+ldi r20, 0x00
+ST Y+, r20     ; 68
+
+ldi r20, 0x00
+ST Y+, r20     ; 69
+
+ldi r20, 0x00
+ST Y+, r20     ; 70
+
+ldi r20, 0x00
+ST Y+, r20     ; 71
+
+ldi r20, 0x00
+ST Y+, r20     ; 72
+
+ldi r20, 0x00
+ST Y+, r20     ; 73
+
+ldi r20, 0x00
+ST Y+, r20     ; 74
+
+ldi r20, 0x00
+ST Y+, r20     ; 75
+
+ldi r20, 0x00
+ST Y+, r20     ; 76
+
+ldi r20, 0x00
+ST Y+, r20     ; 77
+
+ldi r20, 0x00
+ST Y+, r20     ; 78
+
+ldi r20, 0x00
+ST Y+, r20     ; 79
+
+ldi r20, 0x00
+ST Y+, r20     ; 80
+
+ldi r20, 0x00
+ST Y+, r20     ; 81
+
+ldi r20, 0x00
+ST Y+, r20     ; 82
+
+ldi r20, 0x00
+ST Y+, r20     ; 83
+
+ldi r20, 0x00
+ST Y+, r20     ; 84
+
+ldi r20, 0x00
+ST Y+, r20     ; 85
+
+ldi r20, 0x00
+ST Y+, r20     ; 86
+
+ldi r20, 0x00
+ST Y+, r20     ; 87
+
+ldi r20, 0x00
+ST Y+, r20     ; 88
+
+ldi r20, 0x00
+ST Y+, r20     ; 89
+
+ldi r20, 0x00
+ST Y+, r20     ; 90
+
+ldi r20, 0x00
+ST Y+, r20     ; 91
+
+ldi r20, 0x00
+ST Y+, r20     ; 92
+
+ldi r20, 0x00
+ST Y+, r20     ; 93
+
+ldi r20, 0x00
+ST Y+, r20     ; 94
+
+ldi r20, 0x00
+ST Y+, r20     ; 95
+
+ldi r20, 0x00
+ST Y+, r20     ; 96
+
+ldi r20, 0x00
+ST Y+, r20     ; 97
+
+ldi r20, 0x00
+ST Y+, r20     ; 98
+
+ldi r20, 0x00
+ST Y+, r20     ; 99
+
+ldi r20, 0x00
+ST Y+, r20     ; 100
+
+ldi r20, 0x00
+ST Y+, r20     ; 101
+
+ldi r20, 0x00
+ST Y+, r20     ; 102
+
+ldi r20, 0x00
+ST Y+, r20     ; 103
+
+ldi r20, 0x00
+ST Y+, r20     ; 104
+
+ldi r20, 0x00
+ST Y+, r20     ; 105
+
+ldi r20, 0x00
+ST Y+, r20     ; 106
+
+ldi r20, 0x00
+ST Y+, r20     ; 107
+
+ldi r20, 0x00
+ST Y+, r20     ; 108
+
+ldi r20, 0x00
+ST Y+, r20     ; 109
+
+ldi r20, 0x00
+ST Y+, r20     ; 110
+
+ldi r20, 0x00
+ST Y+, r20     ; 111
+
+ldi r20, 0x00
+ST Y+, r20     ; 112
+
+ldi r20, 0x00
+ST Y+, r20     ; 113
+
+ldi r20, 0x00
+ST Y+, r20     ; 114
+
+ldi r20, 0x00
+ST Y+, r20     ; 115
+
+ldi r20, 0x00
+ST Y+, r20     ; 116
+
+ldi r20, 0x00
+ST Y+, r20     ; 117
+
+ldi r20, 0x00
+ST Y+, r20     ; 118
+
+ldi r20, 0x00
+ST Y+, r20     ; 119
+
+ldi r20, 0x00
+ST Y+, r20     ; 120
+
+ldi r20, 0x00
+ST Y+, r20     ; 121
+
+ldi r20, 0x00
+ST Y+, r20     ; 122
+
+ldi r20, 0x00
+ST Y+, r20     ; 123
+
+ldi r20, 0x00
+ST Y+, r20     ; 124
+
+ldi r20, 0x00
+ST Y+, r20     ; 125
+
+ldi r20, 0x00
+ST Y+, r20     ; 126
+
+ldi r20, 0x00
+ST Y+, r20     ; 127
+
+
+
+;--------------------------------------------------
+; Muestras 128 - 255 -> 0xFF
+;--------------------------------------------------
+
+ldi r20, 0xFF
+ST Y+, r20     ; 128
+
+ldi r20, 0xFF
+ST Y+, r20     ; 129
+
+ldi r20, 0xFF
+ST Y+, r20     ; 130
+
+ldi r20, 0xFF
+ST Y+, r20     ; 131
+
+ldi r20, 0xFF
+ST Y+, r20     ; 132
+
+ldi r20, 0xFF
+ST Y+, r20     ; 133
+
+ldi r20, 0xFF
+ST Y+, r20     ; 134
+
+ldi r20, 0xFF
+ST Y+, r20     ; 135
+
+ldi r20, 0xFF
+ST Y+, r20     ; 136
+
+ldi r20, 0xFF
+ST Y+, r20     ; 137
+
+ldi r20, 0xFF
+ST Y+, r20     ; 138
+
+ldi r20, 0xFF
+ST Y+, r20     ; 139
+
+ldi r20, 0xFF
+ST Y+, r20     ; 140
+
+ldi r20, 0xFF
+ST Y+, r20     ; 141
+
+ldi r20, 0xFF
+ST Y+, r20     ; 142
+
+ldi r20, 0xFF
+ST Y+, r20     ; 143
+
+ldi r20, 0xFF
+ST Y+, r20     ; 144
+
+ldi r20, 0xFF
+ST Y+, r20     ; 145
+
+ldi r20, 0xFF
+ST Y+, r20     ; 146
+
+ldi r20, 0xFF
+ST Y+, r20     ; 147
+
+ldi r20, 0xFF
+ST Y+, r20     ; 148
+
+ldi r20, 0xFF
+ST Y+, r20     ; 149
+
+ldi r20, 0xFF
+ST Y+, r20     ; 150
+
+ldi r20, 0xFF
+ST Y+, r20     ; 151
+
+ldi r20, 0xFF
+ST Y+, r20     ; 152
+
+ldi r20, 0xFF
+ST Y+, r20     ; 153
+
+ldi r20, 0xFF
+ST Y+, r20     ; 154
+
+ldi r20, 0xFF
+ST Y+, r20     ; 155
+
+ldi r20, 0xFF
+ST Y+, r20     ; 156
+
+ldi r20, 0xFF
+ST Y+, r20     ; 157
+
+ldi r20, 0xFF
+ST Y+, r20     ; 158
+
+ldi r20, 0xFF
+ST Y+, r20     ; 159
+
+ldi r20, 0xFF
+ST Y+, r20     ; 160
+
+ldi r20, 0xFF
+ST Y+, r20     ; 161
+
+ldi r20, 0xFF
+ST Y+, r20     ; 162
+
+ldi r20, 0xFF
+ST Y+, r20     ; 163
+
+ldi r20, 0xFF
+ST Y+, r20     ; 164
+
+ldi r20, 0xFF
+ST Y+, r20     ; 165
+
+ldi r20, 0xFF
+ST Y+, r20     ; 166
+
+ldi r20, 0xFF
+ST Y+, r20     ; 167
+
+ldi r20, 0xFF
+ST Y+, r20     ; 168
+
+ldi r20, 0xFF
+ST Y+, r20     ; 169
+
+ldi r20, 0xFF
+ST Y+, r20     ; 170
+
+ldi r20, 0xFF
+ST Y+, r20     ; 171
+
+ldi r20, 0xFF
+ST Y+, r20     ; 172
+
+ldi r20, 0xFF
+ST Y+, r20     ; 173
+
+ldi r20, 0xFF
+ST Y+, r20     ; 174
+
+ldi r20, 0xFF
+ST Y+, r20     ; 175
+
+ldi r20, 0xFF
+ST Y+, r20     ; 176
+
+ldi r20, 0xFF
+ST Y+, r20     ; 177
+
+ldi r20, 0xFF
+ST Y+, r20     ; 178
+
+ldi r20, 0xFF
+ST Y+, r20     ; 179
+
+ldi r20, 0xFF
+ST Y+, r20     ; 180
+
+ldi r20, 0xFF
+ST Y+, r20     ; 181
+
+ldi r20, 0xFF
+ST Y+, r20     ; 182
+
+ldi r20, 0xFF
+ST Y+, r20     ; 183
+
+ldi r20, 0xFF
+ST Y+, r20     ; 184
+
+ldi r20, 0xFF
+ST Y+, r20     ; 185
+
+ldi r20, 0xFF
+ST Y+, r20     ; 186
+
+ldi r20, 0xFF
+ST Y+, r20     ; 187
+
+ldi r20, 0xFF
+ST Y+, r20     ; 188
+
+ldi r20, 0xFF
+ST Y+, r20     ; 189
+
+ldi r20, 0xFF
+ST Y+, r20     ; 190
+
+ldi r20, 0xFF
+ST Y+, r20     ; 191
+
+ldi r20, 0xFF
+ST Y+, r20     ; 192
+
+ldi r20, 0xFF
+ST Y+, r20     ; 193
+
+ldi r20, 0xFF
+ST Y+, r20     ; 194
+
+ldi r20, 0xFF
+ST Y+, r20     ; 195
+
+ldi r20, 0xFF
+ST Y+, r20     ; 196
+
+ldi r20, 0xFF
+ST Y+, r20     ; 197
+
+ldi r20, 0xFF
+ST Y+, r20     ; 198
+
+ldi r20, 0xFF
+ST Y+, r20     ; 199
+
+ldi r20, 0xFF
+ST Y+, r20     ; 200
+
+ldi r20, 0xFF
+ST Y+, r20     ; 201
+
+ldi r20, 0xFF
+ST Y+, r20     ; 202
+
+ldi r20, 0xFF
+ST Y+, r20     ; 203
+
+ldi r20, 0xFF
+ST Y+, r20     ; 204
+
+ldi r20, 0xFF
+ST Y+, r20     ; 205
+
+ldi r20, 0xFF
+ST Y+, r20     ; 206
+
+ldi r20, 0xFF
+ST Y+, r20     ; 207
+
+ldi r20, 0xFF
+ST Y+, r20     ; 208
+
+ldi r20, 0xFF
+ST Y+, r20     ; 209
+
+ldi r20, 0xFF
+ST Y+, r20     ; 210
+
+ldi r20, 0xFF
+ST Y+, r20     ; 211
+
+ldi r20, 0xFF
+ST Y+, r20     ; 212
+
+ldi r20, 0xFF
+ST Y+, r20     ; 213
+
+ldi r20, 0xFF
+ST Y+, r20     ; 214
+
+ldi r20, 0xFF
+ST Y+, r20     ; 215
+
+ldi r20, 0xFF
+ST Y+, r20     ; 216
+
+ldi r20, 0xFF
+ST Y+, r20     ; 217
+
+ldi r20, 0xFF
+ST Y+, r20     ; 218
+
+ldi r20, 0xFF
+ST Y+, r20     ; 219
+
+ldi r20, 0xFF
+ST Y+, r20     ; 220
+
+ldi r20, 0xFF
+ST Y+, r20     ; 221
+
+ldi r20, 0xFF
+ST Y+, r20     ; 222
+
+ldi r20, 0xFF
+ST Y+, r20     ; 223
+
+ldi r20, 0xFF
+ST Y+, r20     ; 224
+
+ldi r20, 0xFF
+ST Y+, r20     ; 225
+
+ldi r20, 0xFF
+ST Y+, r20     ; 226
+
+ldi r20, 0xFF
+ST Y+, r20     ; 227
+
+ldi r20, 0xFF
+ST Y+, r20     ; 228
+
+ldi r20, 0xFF
+ST Y+, r20     ; 229
+
+ldi r20, 0xFF
+ST Y+, r20     ; 230
+
+ldi r20, 0xFF
+ST Y+, r20     ; 231
+
+ldi r20, 0xFF
+ST Y+, r20     ; 232
+
+ldi r20, 0xFF
+ST Y+, r20     ; 233
+
+ldi r20, 0xFF
+ST Y+, r20     ; 234
+
+ldi r20, 0xFF
+ST Y+, r20     ; 235
+
+ldi r20, 0xFF
+ST Y+, r20     ; 236
+
+ldi r20, 0xFF
+ST Y+, r20     ; 237
+
+ldi r20, 0xFF
+ST Y+, r20     ; 238
+
+ldi r20, 0xFF
+ST Y+, r20     ; 239
+
+ldi r20, 0xFF
+ST Y+, r20     ; 240
+
+ldi r20, 0xFF
+ST Y+, r20     ; 241
+
+ldi r20, 0xFF
+ST Y+, r20     ; 242
+
+ldi r20, 0xFF
+ST Y+, r20     ; 243
+
+ldi r20, 0xFF
+ST Y+, r20     ; 244
+
+ldi r20, 0xFF
+ST Y+, r20     ; 245
+
+ldi r20, 0xFF
+ST Y+, r20     ; 246
+
+ldi r20, 0xFF
+ST Y+, r20     ; 247
+
+ldi r20, 0xFF
+ST Y+, r20     ; 248
+
+ldi r20, 0xFF
+ST Y+, r20     ; 249
+
+ldi r20, 0xFF
+ST Y+, r20     ; 250
+
+ldi r20, 0xFF
+ST Y+, r20     ; 251
+
+ldi r20, 0xFF
+ST Y+, r20     ; 252
+
+ldi r20, 0xFF
+ST Y+, r20     ; 253
+
+ldi r20, 0xFF
+ST Y+, r20     ; 254
+
+ldi r20, 0xFF
+ST Y+, r20     ; 255
+
+
+ret
+
+
+
+;==================================================
+; LUT SEÑAL 2
+;==================================================
+
+guardar_codigos_2:
+
+;--------------------------------------------------
+; Y apunta al comienzo de la LUT de la señal 2
+;--------------------------------------------------
+
+ldi r28, LOW(TABLA_SENAL2)
+ldi r29, HIGH(TABLA_SENAL2)
+
+
+;--------------------------------------------------
+; 256 muestras:
+; 0xFF, 0xFE, 0xFD, ... , 0x01, 0x00
+;--------------------------------------------------
+
+ldi r20, 0xFF
+ST Y+, r20     ; 0
+
+ldi r20, 0xFE
+ST Y+, r20     ; 1
+
+ldi r20, 0xFD
+ST Y+, r20     ; 2
+
+ldi r20, 0xFC
+ST Y+, r20     ; 3
+
+ldi r20, 0xFB
+ST Y+, r20     ; 4
+
+ldi r20, 0xFA
+ST Y+, r20     ; 5
+
+ldi r20, 0xF9
+ST Y+, r20     ; 6
+
+ldi r20, 0xF8
+ST Y+, r20     ; 7
+
+ldi r20, 0xF7
+ST Y+, r20     ; 8
+
+ldi r20, 0xF6
+ST Y+, r20     ; 9
+
+ldi r20, 0xF5
+ST Y+, r20     ; 10
+
+ldi r20, 0xF4
+ST Y+, r20     ; 11
+
+ldi r20, 0xF3
+ST Y+, r20     ; 12
+
+ldi r20, 0xF2
+ST Y+, r20     ; 13
+
+ldi r20, 0xF1
+ST Y+, r20     ; 14
+
+ldi r20, 0xF0
+ST Y+, r20     ; 15
+
+ldi r20, 0xEF
+ST Y+, r20     ; 16
+
+ldi r20, 0xEE
+ST Y+, r20     ; 17
+
+ldi r20, 0xED
+ST Y+, r20     ; 18
+
+ldi r20, 0xEC
+ST Y+, r20     ; 19
+
+ldi r20, 0xEB
+ST Y+, r20     ; 20
+
+ldi r20, 0xEA
+ST Y+, r20     ; 21
+
+ldi r20, 0xE9
+ST Y+, r20     ; 22
+
+ldi r20, 0xE8
+ST Y+, r20     ; 23
+
+ldi r20, 0xE7
+ST Y+, r20     ; 24
+
+ldi r20, 0xE6
+ST Y+, r20     ; 25
+
+ldi r20, 0xE5
+ST Y+, r20     ; 26
+
+ldi r20, 0xE4
+ST Y+, r20     ; 27
+
+ldi r20, 0xE3
+ST Y+, r20     ; 28
+
+ldi r20, 0xE2
+ST Y+, r20     ; 29
+
+ldi r20, 0xE1
+ST Y+, r20     ; 30
+
+ldi r20, 0xE0
+ST Y+, r20     ; 31
+
+ldi r20, 0xDF
+ST Y+, r20     ; 32
+
+ldi r20, 0xDE
+ST Y+, r20     ; 33
+
+ldi r20, 0xDD
+ST Y+, r20     ; 34
+
+ldi r20, 0xDC
+ST Y+, r20     ; 35
+
+ldi r20, 0xDB
+ST Y+, r20     ; 36
+
+ldi r20, 0xDA
+ST Y+, r20     ; 37
+
+ldi r20, 0xD9
+ST Y+, r20     ; 38
+
+ldi r20, 0xD8
+ST Y+, r20     ; 39
+
+ldi r20, 0xD7
+ST Y+, r20     ; 40
+
+ldi r20, 0xD6
+ST Y+, r20     ; 41
+
+ldi r20, 0xD5
+ST Y+, r20     ; 42
+
+ldi r20, 0xD4
+ST Y+, r20     ; 43
+
+ldi r20, 0xD3
+ST Y+, r20     ; 44
+
+ldi r20, 0xD2
+ST Y+, r20     ; 45
+
+ldi r20, 0xD1
+ST Y+, r20     ; 46
+
+ldi r20, 0xD0
+ST Y+, r20     ; 47
+
+ldi r20, 0xCF
+ST Y+, r20     ; 48
+
+ldi r20, 0xCE
+ST Y+, r20     ; 49
+
+ldi r20, 0xCD
+ST Y+, r20     ; 50
+
+ldi r20, 0xCC
+ST Y+, r20     ; 51
+
+ldi r20, 0xCB
+ST Y+, r20     ; 52
+
+ldi r20, 0xCA
+ST Y+, r20     ; 53
+
+ldi r20, 0xC9
+ST Y+, r20     ; 54
+
+ldi r20, 0xC8
+ST Y+, r20     ; 55
+
+ldi r20, 0xC7
+ST Y+, r20     ; 56
+
+ldi r20, 0xC6
+ST Y+, r20     ; 57
+
+ldi r20, 0xC5
+ST Y+, r20     ; 58
+
+ldi r20, 0xC4
+ST Y+, r20     ; 59
+
+ldi r20, 0xC3
+ST Y+, r20     ; 60
+
+ldi r20, 0xC2
+ST Y+, r20     ; 61
+
+ldi r20, 0xC1
+ST Y+, r20     ; 62
+
+ldi r20, 0xC0
+ST Y+, r20     ; 63
+
+ldi r20, 0xBF
+ST Y+, r20     ; 64
+
+ldi r20, 0xBE
+ST Y+, r20     ; 65
+
+ldi r20, 0xBD
+ST Y+, r20     ; 66
+
+ldi r20, 0xBC
+ST Y+, r20     ; 67
+
+ldi r20, 0xBB
+ST Y+, r20     ; 68
+
+ldi r20, 0xBA
+ST Y+, r20     ; 69
+
+ldi r20, 0xB9
+ST Y+, r20     ; 70
+
+ldi r20, 0xB8
+ST Y+, r20     ; 71
+
+ldi r20, 0xB7
+ST Y+, r20     ; 72
+
+ldi r20, 0xB6
+ST Y+, r20     ; 73
+
+ldi r20, 0xB5
+ST Y+, r20     ; 74
+
+ldi r20, 0xB4
+ST Y+, r20     ; 75
+
+ldi r20, 0xB3
+ST Y+, r20     ; 76
+
+ldi r20, 0xB2
+ST Y+, r20     ; 77
+
+ldi r20, 0xB1
+ST Y+, r20     ; 78
+
+ldi r20, 0xB0
+ST Y+, r20     ; 79
+
+ldi r20, 0xAF
+ST Y+, r20     ; 80
+
+ldi r20, 0xAE
+ST Y+, r20     ; 81
+
+ldi r20, 0xAD
+ST Y+, r20     ; 82
+
+ldi r20, 0xAC
+ST Y+, r20     ; 83
+
+ldi r20, 0xAB
+ST Y+, r20     ; 84
+
+ldi r20, 0xAA
+ST Y+, r20     ; 85
+
+ldi r20, 0xA9
+ST Y+, r20     ; 86
+
+ldi r20, 0xA8
+ST Y+, r20     ; 87
+
+ldi r20, 0xA7
+ST Y+, r20     ; 88
+
+ldi r20, 0xA6
+ST Y+, r20     ; 89
+
+ldi r20, 0xA5
+ST Y+, r20     ; 90
+
+ldi r20, 0xA4
+ST Y+, r20     ; 91
+
+ldi r20, 0xA3
+ST Y+, r20     ; 92
+
+ldi r20, 0xA2
+ST Y+, r20     ; 93
+
+ldi r20, 0xA1
+ST Y+, r20     ; 94
+
+ldi r20, 0xA0
+ST Y+, r20     ; 95
+
+ldi r20, 0x9F
+ST Y+, r20     ; 96
+
+ldi r20, 0x9E
+ST Y+, r20     ; 97
+
+ldi r20, 0x9D
+ST Y+, r20     ; 98
+
+ldi r20, 0x9C
+ST Y+, r20     ; 99
+
+ldi r20, 0x9B
+ST Y+, r20     ; 100
+
+ldi r20, 0x9A
+ST Y+, r20     ; 101
+
+ldi r20, 0x99
+ST Y+, r20     ; 102
+
+ldi r20, 0x98
+ST Y+, r20     ; 103
+
+ldi r20, 0x97
+ST Y+, r20     ; 104
+
+ldi r20, 0x96
+ST Y+, r20     ; 105
+
+ldi r20, 0x95
+ST Y+, r20     ; 106
+
+ldi r20, 0x94
+ST Y+, r20     ; 107
+
+ldi r20, 0x93
+ST Y+, r20     ; 108
+
+ldi r20, 0x92
+ST Y+, r20     ; 109
+
+ldi r20, 0x91
+ST Y+, r20     ; 110
+
+ldi r20, 0x90
+ST Y+, r20     ; 111
+
+ldi r20, 0x8F
+ST Y+, r20     ; 112
+
+ldi r20, 0x8E
+ST Y+, r20     ; 113
+
+ldi r20, 0x8D
+ST Y+, r20     ; 114
+
+ldi r20, 0x8C
+ST Y+, r20     ; 115
+
+ldi r20, 0x8B
+ST Y+, r20     ; 116
+
+ldi r20, 0x8A
+ST Y+, r20     ; 117
+
+ldi r20, 0x89
+ST Y+, r20     ; 118
+
+ldi r20, 0x88
+ST Y+, r20     ; 119
+
+ldi r20, 0x87
+ST Y+, r20     ; 120
+
+ldi r20, 0x86
+ST Y+, r20     ; 121
+
+ldi r20, 0x85
+ST Y+, r20     ; 122
+
+ldi r20, 0x84
+ST Y+, r20     ; 123
+
+ldi r20, 0x83
+ST Y+, r20     ; 124
+
+ldi r20, 0x82
+ST Y+, r20     ; 125
+
+ldi r20, 0x81
+ST Y+, r20     ; 126
+
+ldi r20, 0x80
+ST Y+, r20     ; 127
+
+ldi r20, 0x7F
+ST Y+, r20     ; 128
+
+ldi r20, 0x7E
+ST Y+, r20     ; 129
+
+ldi r20, 0x7D
+ST Y+, r20     ; 130
+
+ldi r20, 0x7C
+ST Y+, r20     ; 131
+
+ldi r20, 0x7B
+ST Y+, r20     ; 132
+
+ldi r20, 0x7A
+ST Y+, r20     ; 133
+
+ldi r20, 0x79
+ST Y+, r20     ; 134
+
+ldi r20, 0x78
+ST Y+, r20     ; 135
+
+ldi r20, 0x77
+ST Y+, r20     ; 136
+
+ldi r20, 0x76
+ST Y+, r20     ; 137
+
+ldi r20, 0x75
+ST Y+, r20     ; 138
+
+ldi r20, 0x74
+ST Y+, r20     ; 139
+
+ldi r20, 0x73
+ST Y+, r20     ; 140
+
+ldi r20, 0x72
+ST Y+, r20     ; 141
+
+ldi r20, 0x71
+ST Y+, r20     ; 142
+
+ldi r20, 0x70
+ST Y+, r20     ; 143
+
+ldi r20, 0x6F
+ST Y+, r20     ; 144
+
+ldi r20, 0x6E
+ST Y+, r20     ; 145
+
+ldi r20, 0x6D
+ST Y+, r20     ; 146
+
+ldi r20, 0x6C
+ST Y+, r20     ; 147
+
+ldi r20, 0x6B
+ST Y+, r20     ; 148
+
+ldi r20, 0x6A
+ST Y+, r20     ; 149
+
+ldi r20, 0x69
+ST Y+, r20     ; 150
+
+ldi r20, 0x68
+ST Y+, r20     ; 151
+
+ldi r20, 0x67
+ST Y+, r20     ; 152
+
+ldi r20, 0x66
+ST Y+, r20     ; 153
+
+ldi r20, 0x65
+ST Y+, r20     ; 154
+
+ldi r20, 0x64
+ST Y+, r20     ; 155
+
+ldi r20, 0x63
+ST Y+, r20     ; 156
+
+ldi r20, 0x62
+ST Y+, r20     ; 157
+
+ldi r20, 0x61
+ST Y+, r20     ; 158
+
+ldi r20, 0x60
+ST Y+, r20     ; 159
+
+ldi r20, 0x5F
+ST Y+, r20     ; 160
+
+ldi r20, 0x5E
+ST Y+, r20     ; 161
+
+ldi r20, 0x5D
+ST Y+, r20     ; 162
+
+ldi r20, 0x5C
+ST Y+, r20     ; 163
+
+ldi r20, 0x5B
+ST Y+, r20     ; 164
+
+ldi r20, 0x5A
+ST Y+, r20     ; 165
+
+ldi r20, 0x59
+ST Y+, r20     ; 166
+
+ldi r20, 0x58
+ST Y+, r20     ; 167
+
+ldi r20, 0x57
+ST Y+, r20     ; 168
+
+ldi r20, 0x56
+ST Y+, r20     ; 169
+
+ldi r20, 0x55
+ST Y+, r20     ; 170
+
+ldi r20, 0x54
+ST Y+, r20     ; 171
+
+ldi r20, 0x53
+ST Y+, r20     ; 172
+
+ldi r20, 0x52
+ST Y+, r20     ; 173
+
+ldi r20, 0x51
+ST Y+, r20     ; 174
+
+ldi r20, 0x50
+ST Y+, r20     ; 175
+
+ldi r20, 0x4F
+ST Y+, r20     ; 176
+
+ldi r20, 0x4E
+ST Y+, r20     ; 177
+
+ldi r20, 0x4D
+ST Y+, r20     ; 178
+
+ldi r20, 0x4C
+ST Y+, r20     ; 179
+
+ldi r20, 0x4B
+ST Y+, r20     ; 180
+
+ldi r20, 0x4A
+ST Y+, r20     ; 181
+
+ldi r20, 0x49
+ST Y+, r20     ; 182
+
+ldi r20, 0x48
+ST Y+, r20     ; 183
+
+ldi r20, 0x47
+ST Y+, r20     ; 184
+
+ldi r20, 0x46
+ST Y+, r20     ; 185
+
+ldi r20, 0x45
+ST Y+, r20     ; 186
+
+ldi r20, 0x44
+ST Y+, r20     ; 187
+
+ldi r20, 0x43
+ST Y+, r20     ; 188
+
+ldi r20, 0x42
+ST Y+, r20     ; 189
+
+ldi r20, 0x41
+ST Y+, r20     ; 190
+
+ldi r20, 0x40
+ST Y+, r20     ; 191
+
+ldi r20, 0x3F
+ST Y+, r20     ; 192
+
+ldi r20, 0x3E
+ST Y+, r20     ; 193
+
+ldi r20, 0x3D
+ST Y+, r20     ; 194
+
+ldi r20, 0x3C
+ST Y+, r20     ; 195
+
+ldi r20, 0x3B
+ST Y+, r20     ; 196
+
+ldi r20, 0x3A
+ST Y+, r20     ; 197
+
+ldi r20, 0x39
+ST Y+, r20     ; 198
+
+ldi r20, 0x38
+ST Y+, r20     ; 199
+
+ldi r20, 0x37
+ST Y+, r20     ; 200
+
+ldi r20, 0x36
+ST Y+, r20     ; 201
+
+ldi r20, 0x35
+ST Y+, r20     ; 202
+
+ldi r20, 0x34
+ST Y+, r20     ; 203
+
+ldi r20, 0x33
+ST Y+, r20     ; 204
+
+ldi r20, 0x32
+ST Y+, r20     ; 205
+
+ldi r20, 0x31
+ST Y+, r20     ; 206
+
+ldi r20, 0x30
+ST Y+, r20     ; 207
+
+ldi r20, 0x2F
+ST Y+, r20     ; 208
+
+ldi r20, 0x2E
+ST Y+, r20     ; 209
+
+ldi r20, 0x2D
+ST Y+, r20     ; 210
+
+ldi r20, 0x2C
+ST Y+, r20     ; 211
+
+ldi r20, 0x2B
+ST Y+, r20     ; 212
+
+ldi r20, 0x2A
+ST Y+, r20     ; 213
+
+ldi r20, 0x29
+ST Y+, r20     ; 214
+
+ldi r20, 0x28
+ST Y+, r20     ; 215
+
+ldi r20, 0x27
+ST Y+, r20     ; 216
+
+ldi r20, 0x26
+ST Y+, r20     ; 217
+
+ldi r20, 0x25
+ST Y+, r20     ; 218
+
+ldi r20, 0x24
+ST Y+, r20     ; 219
+
+ldi r20, 0x23
+ST Y+, r20     ; 220
+
+ldi r20, 0x22
+ST Y+, r20     ; 221
+
+ldi r20, 0x21
+ST Y+, r20     ; 222
+
+ldi r20, 0x20
+ST Y+, r20     ; 223
+
+ldi r20, 0x1F
+ST Y+, r20     ; 224
+
+ldi r20, 0x1E
+ST Y+, r20     ; 225
+
+ldi r20, 0x1D
+ST Y+, r20     ; 226
+
+ldi r20, 0x1C
+ST Y+, r20     ; 227
+
+ldi r20, 0x1B
+ST Y+, r20     ; 228
+
+ldi r20, 0x1A
+ST Y+, r20     ; 229
+
+ldi r20, 0x19
+ST Y+, r20     ; 230
+
+ldi r20, 0x18
+ST Y+, r20     ; 231
+
+ldi r20, 0x17
+ST Y+, r20     ; 232
+
+ldi r20, 0x16
+ST Y+, r20     ; 233
+
+ldi r20, 0x15
+ST Y+, r20     ; 234
+
+ldi r20, 0x14
+ST Y+, r20     ; 235
+
+ldi r20, 0x13
+ST Y+, r20     ; 236
+
+ldi r20, 0x12
+ST Y+, r20     ; 237
+
+ldi r20, 0x11
+ST Y+, r20     ; 238
+
+ldi r20, 0x10
+ST Y+, r20     ; 239
+
+ldi r20, 0x0F
+ST Y+, r20     ; 240
+
+ldi r20, 0x0E
+ST Y+, r20     ; 241
+
+ldi r20, 0x0D
+ST Y+, r20     ; 242
+
+ldi r20, 0x0C
+ST Y+, r20     ; 243
+
+ldi r20, 0x0B
+ST Y+, r20     ; 244
+
+ldi r20, 0x0A
+ST Y+, r20     ; 245
+
+ldi r20, 0x09
+ST Y+, r20     ; 246
+
+ldi r20, 0x08
+ST Y+, r20     ; 247
+
+ldi r20, 0x07
+ST Y+, r20     ; 248
+
+ldi r20, 0x06
+ST Y+, r20     ; 249
+
+ldi r20, 0x05
+ST Y+, r20     ; 250
+
+ldi r20, 0x04
+ST Y+, r20     ; 251
+
+ldi r20, 0x03
+ST Y+, r20     ; 252
+
+ldi r20, 0x02
+ST Y+, r20     ; 253
+
+ldi r20, 0x01
+ST Y+, r20     ; 254
+
+ldi r20, 0x00
+ST Y+, r20     ; 255
+
+ret
+
+
+
+;=======================================================================
+; CÓDIGO PARA INTERRUPCIÓN DEL TIMER
+; AUMENTAR - DISMINUIR FRECUENCIA
+;=======================================================================
+
+
+;-----------------------------------------------------
+; Programa para detectar pulos de PD2 - PD3
+;-----------------------------------------------------
+
+ESPERAR_PULSACION:
+
+
+;--------------------------------------------------
+; PD2
+; Disminuye tiempo
+; Aumenta frecuencia
+;--------------------------------------------------
+
+sbic PIND, PD2
+rjmp DISMINUIR_TIEMPO
+
+
+;--------------------------------------------------
+; PD3
+; Aumenta tiempo
+; Disminuye frecuencia
+;--------------------------------------------------
+
+sbic PIND, PD3
+rjmp AUMENTAR_TIEMPO
+
+
+rjmp ESPERAR_PULSACION
+
+
+
+;==================================================
+; DISMINUIR TIEMPO
+;==================================================
+
+DISMINUIR_TIEMPO:
+
+rcall DELAY
+
+
+;--------------------------------------------------
+; Confirmar pulsación
+;--------------------------------------------------
+
+sbis PIND, PD2
+rjmp ESPERAR_PULSACION
+
+
+;--------------------------------------------------
+; Dividir r17:r18 entre 2
+;--------------------------------------------------
+
+lsr r17
+ror r18
+
+
+;--------------------------------------------------
+; Actualizar OCR1A
+;--------------------------------------------------
+
+sts OCR1AH, r17
+sts OCR1AL, r18
+
+
+rjmp ESPERAR_SUELTA
+
+
+
+;==================================================
+; AUMENTAR TIEMPO
+;==================================================
+
+AUMENTAR_TIEMPO:
+
+rcall DELAY
+
+
+;--------------------------------------------------
+; Confirmar pulsación
+;--------------------------------------------------
+
+sbis PIND, PD3
+rjmp ESPERAR_PULSACION
+
+
+;--------------------------------------------------
+; Multiplicar r17:r18 por 2
+;--------------------------------------------------
+
+lsl r18
+rol r17
+
+
+;--------------------------------------------------
+; Actualizar OCR1A
+;--------------------------------------------------
+
+sts OCR1AH, r17
+sts OCR1AL, r18
+
+
+rjmp ESPERAR_SUELTA
+
+
+
+;==================================================
+; ESPERAR QUE BOTÓN SE SUELTE
+;==================================================
+
+ESPERAR_SUELTA:
+
+
+sbic PIND, PD2
+rjmp ESPERAR_SUELTA
+
+
+sbic PIND, PD3
+rjmp ESPERAR_SUELTA
+
+
+rjmp ESPERAR_PULSACION
+
+
+
+;===================================================
+; RETARDO ANTIRREBOTE
+;==================================================
+
+DELAY:
+
+ldi r19, 50
+
+
+DELAY_1:
+
+ldi r20, 255
+
+
+DELAY_2:
+
+dec r20
+brne DELAY_2
+
+dec r19
+brne DELAY_1
+
+ret
+
+
+
+;==================================================
+; TIMER
+;==================================================
+
+CONFIG_TIMER1:
+
+
+;--------------------------------------------------
+; Timer1 detenido inicialmente
+;--------------------------------------------------
+
+ldi r16, 0
+
+sts TCCR1A, r16
+sts TCCR1B, r16
+
+
+;--------------------------------------------------
+; Reiniciar contador
+;--------------------------------------------------
+
+ldi r16, 0
+
+sts TCNT1H, r16
+sts TCNT1L, r16
+
+
+;--------------------------------------------------
+; OCR1A = r17:r18
+;--------------------------------------------------
+
+sts OCR1AH, r17
+sts OCR1AL, r18
+
+
+;--------------------------------------------------
+; Limpiar bandera OCF1A
+;--------------------------------------------------
+
+ldi r16, (1 << OCF1A)
+sts TIFR1, r16
+
+
+;--------------------------------------------------
+; Habilitar interrupción Compare A
+;--------------------------------------------------
+
+ldi r16, (1 << OCIE1A)
+sts TIMSK1, r16
+
+
+;--------------------------------------------------
+; CTC
+; Prescaler = 1024
+;--------------------------------------------------
+
+ldi r16, (1 << WGM12) | (1 << CS12) | (1 << CS10)
+
+sts TCCR1B, r16
+
+
+;--------------------------------------------------
+; Habilitar interrupciones globales
+;--------------------------------------------------
+
+sei
+
+ret
+
+
+
+;==================================================
+; INTERRUPCIÓN TIMER1
+;
+; En cada interrupción:
+;
+; 1. Cambiar PB5
+; 2. Revisar señal seleccionada
+; 3. Leer su LUT
+; 4. Mandar dato al DAC
+; 5. Incrementar índice
+;==================================================
+
+TIMER1_COMPA:
+
+
+;--------------------------------------------------
+; Guardar r0
+;--------------------------------------------------
+
+push r0
+
+
+;--------------------------------------------------
+; Guardar SREG
+;--------------------------------------------------
+
+in r0, SREG
+push r0
+
+
+;--------------------------------------------------
+; Guardar registros utilizados
+;--------------------------------------------------
+
+push r19
+push r20
+push r21
+push r28
+push r29
+
+
+;--------------------------------------------------
+; LED DE INTERRUPCIÓN
+; PB5 cambia cada vez que ocurre una interrupción.
+;--------------------------------------------------
+
+sbi DDRB, DDB5
+sbi PINB, PB5
+
+
+;==================================================
+; VER QUÉ SEÑAL FUE SELECCIONADA EN EL MENÚ
+;==================================================
+
+cpi r25, 1
+breq ISR_SENAL1
+
+cpi r25, 2
+breq ISR_SENAL2
+
+
+;--------------------------------------------------
+; Si por alguna razón no hay señal válida
+;--------------------------------------------------
+
+rjmp ISR_FIN
+
+
+
+;==================================================
+; SEÑAL 1
+;==================================================
+
+ISR_SENAL1:
+
+
+;--------------------------------------------------
+; r24 = posición actual de la LUT
+;--------------------------------------------------
+
+mov r0, r24
+
+
+;--------------------------------------------------
+; Buscar muestra señal 1
+;--------------------------------------------------
+
+rcall get_7seg_code
+
+
+;--------------------------------------------------
+; Mandar muestra al DAC
+;--------------------------------------------------
+
+rcall SALIDA_DAC
+
+
+;--------------------------------------------------
+; Siguiente posición
+;--------------------------------------------------
+
+inc r24
+
+
+rjmp ISR_FIN
+
+
+
+;==================================================
+; SEÑAL 2
+;==================================================
+
+ISR_SENAL2:
+
+
+;--------------------------------------------------
+; Dejamos preparado el índice.
+;--------------------------------------------------
+
+mov r0, r24
+
+
+;--------------------------------------------------
+; Buscar muestra señal 2
+;--------------------------------------------------
+
+rcall get_senal2_code
+
+
+;--------------------------------------------------
+; Mandar muestra al DAC
+;--------------------------------------------------
+
+rcall SALIDA_DAC
+
+
+;--------------------------------------------------
+; Avanzar posición igualmente.
+;--------------------------------------------------
+
+inc r24
+
+
+;==================================================
+; FIN DE INTERRUPCIÓN
+;==================================================
+
+ISR_FIN:
+
+
+;--------------------------------------------------
+; Restaurar registros
+;--------------------------------------------------
+
+pop r29
+pop r28
+pop r21
+pop r20
+pop r19
+
+
+;--------------------------------------------------
+; Restaurar SREG
+;--------------------------------------------------
+
+pop r0
+out SREG, r0
+
+
+;--------------------------------------------------
+; Restaurar r0
+;--------------------------------------------------
+
+pop r0
+
+
+reti
