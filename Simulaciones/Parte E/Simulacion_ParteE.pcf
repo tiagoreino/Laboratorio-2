@@ -1,0 +1,27 @@
+version,0,0,0:0.9.2
+scale,0,0,0:0.700000
+position,617,111,900:636
+boardp,-4,41,886:452
+spare_on,0,0,0:1
+osc_on,0,0,0:0
+useAlias,0,0,0:0
+debug,0,1,0:
+osc_cfg,488,446,0:200.000000,0.000000,1,1,2.500000,1,2,0,0,0
+osc_ch1,0,0,0:2.000000,0.000000,1,#FF0000,0,19  PB0/53
+osc_ch2,0,0,0:2.000000,0.000000,1,#00FF00,0,3  PE1/~1
+Push Buttons,28,20,0:78,77,19,0,0,0,0,0,0,1,1
+Switches,615,16,0:76,75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1
+LEDs,158,249,0:53,54,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,2
+Buzzer,494,256,0:55,0,1
+IO Virtual Term,812,222,0:3,2,1,9600,1,760,456,783,463
+Text Box,6,138,0:12,4,6, %Solicitar Apertura
+Push Buttons,205,21,0:77,0,0,0,0,0,0,0,0,1,1
+Text Box,182,138,0:12,4,6, %Solicitar Clausura
+Push Buttons,391,21,0:19,0,0,0,0,0,0,0,0,1,1
+Text Box,368,135,0:12,4,6, %Detector Obstaculo
+Text Box,526,160,0:12,4,6, %Final de Carrera Apertura
+Switches,865,16,0:75,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1
+Text Box,769,160,0:12,4,6, %Final de Carrera Clausura
+Text Box,58,370,0:12,4,6, %Motor Apertura || Motor Clausura
+Text Box,471,351,0:12,4,6, %Buzzer de Movimiento
+Text Box,743,387,0:12,4,6, %Terminal para Comunicacion Serial

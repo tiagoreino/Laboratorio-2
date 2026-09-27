@@ -1,0 +1,246 @@
+.include "m2560def.inc" ;libreria base para atmega2560
+
+;punteros y salto a programa principal
+.org 0x0000
+	jmp start          
+	
+;puntero a interrupcion PCINT0 (Grupo 0)
+.org 0x0012            
+	jmp ISR_PCINT0     
+
+;configuracion para comunicacion USART-UART
+.equ F_CPU = 16000000
+.equ baud  = 9600
+.equ bps   = (F_CPU/16/baud) - 1
+
+;cambiamos nombres de registros para comodidad
+.def entradas = r16
+.def salidas = r17
+.def flags = r18
+
+;cambiamos nombres a puertos de entrada por comodidad
+.equ AB = PA0
+.equ CE = PA1
+.equ FA = PA2
+.equ FC = PA3
+
+;cambiamos nombres a puertos de salida por comodidad
+.equ MOTOR_ABRIR  = PC0
+.equ MOTOR_CERRAR = PC1
+.equ BUZZER       = PC2
+
+
+start:
+	; inicializacion de stack pointer
+	ldi r16, HIGH(RAMEND)
+	out SPH, r16
+	ldi r16, LOW(RAMEND)
+	out SPL, r16
+
+	; configuracion comunicacion UART
+	ldi r16, LOW(bps)
+	ldi r17, HIGH(bps)
+	rcall initUART
+
+	; entradas (Puerto A)
+	ldi entradas, 0b00000000
+	out DDRA, entradas
+
+	; Pull-up internas Puerto A
+	ldi entradas, 0b00001111
+	out PORTA, entradas
+
+	; PIN DE EMERGENCIA: PB0 (PCINT0) como entrada con Pull-up
+	cbi DDRB, PB0
+	sbi PORTB, PB0    
+
+	; salidas (Puerto C)
+	ldi salidas, 0b00000111
+	out DDRC, salidas
+
+	;inicializamos flags en 0
+	ldi flags, 0
+
+	; habilitacion de PCINT
+	ldi r16, (1<<PCIE0)
+	sts PCICR, r16
+
+	;desenmascaramos pin PCINT0 (PB0) en PCMSK0
+	ldi r16, (1<<PCINT0)
+	sts PCMSK0, r16
+
+	; habilitar interrupciones globales
+	sei
+
+main_loop:
+	
+	; estado puerta abierta
+	puertaAbierta:
+
+		; salidas
+		cbi PORTC, MOTOR_ABRIR
+		cbi PORTC, MOTOR_CERRAR
+		cbi PORTC, BUZZER
+
+		; imprimir UNA SOLA VEZ
+		ldi ZH, HIGH(mensaje_abierta<<1)
+		ldi ZL, LOW(mensaje_abierta<<1)
+		rcall print_string
+
+		;consultamos cambio de estado
+		puertaAbierta_loop:
+			sbis PINA, CE
+			jmp puertaAbierta_a_cerrar 
+			rjmp puertaAbierta_loop
+
+		puertaAbierta_a_cerrar:
+			andi flags, 0b11111110      ; borra cualquier flag vieja
+			jmp puertaCerrandose
+			
+	; estado puerta cerrandose
+	puertaCerrandose:
+		cbi PORTC, MOTOR_ABRIR
+		sbi PORTC, MOTOR_CERRAR
+		sbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_cerrando<<1)
+		ldi ZL, LOW(mensaje_cerrando<<1)
+		rcall print_string
+
+		puertaCerrandose_loop:
+			sbrc flags, 0               
+			jmp obstaculoDetectado
+			sbis PINA, FC
+			jmp puertaCerrada
+			rjmp puertaCerrandose_loop
+
+	; estado puerta cerrada
+	puertaCerrada:
+		cbi PORTC, MOTOR_ABRIR
+		cbi PORTC, MOTOR_CERRAR
+		cbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_cerrada<<1)
+		ldi ZL, LOW(mensaje_cerrada<<1)
+		rcall print_string
+
+		;consultamos cambio de estado
+		puertaCerrada_loop:
+			sbis PINA, AB
+			jmp puertaCerrada_a_abrir   
+			rjmp puertaCerrada_loop
+
+		puertaCerrada_a_abrir:
+			andi flags, 0b11111110      ; borra cualquier flag vieja
+			jmp puertaAbriendose
+
+	; estado puerta abriendose
+	puertaAbriendose:
+		sbi PORTC, MOTOR_ABRIR
+		cbi PORTC, MOTOR_CERRAR
+		sbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_abriendo<<1)
+		ldi ZL, LOW(mensaje_abriendo<<1)
+		rcall print_string
+
+		puertaAbriendose_loop:
+			sbrc flags, 0               
+			jmp obstaculoDetectado
+			sbis PINA, FA
+			jmp puertaAbierta
+			rjmp puertaAbriendose_loop
+
+	; estado obstaculo detectado
+	obstaculoDetectado:
+		cbi PORTC, MOTOR_ABRIR          
+		cbi PORTC, MOTOR_CERRAR
+		cbi PORTC, BUZZER
+
+		ldi ZH, HIGH(mensaje_obstaculo<<1)
+		ldi ZL, LOW(mensaje_obstaculo<<1)
+		rcall print_string
+
+		ldi ZH, HIGH(mensaje_seguridad<<1)
+		ldi ZL, LOW(mensaje_seguridad<<1)
+		rcall print_string
+
+		obstaculoDetectado_loop:
+			sbis PINA, AB
+			jmp obstaculo_a_abrir
+			sbis PINA, CE
+			jmp obstaculo_a_cerrar
+			rjmp obstaculoDetectado_loop
+
+		;reinicia flag independientemente de la eleccion
+		obstaculo_a_abrir:
+			andi flags, 0b11111110      
+			jmp puertaAbriendose
+
+		obstaculo_a_cerrar:
+			andi flags, 0b11111110      
+			jmp puertaCerrandose
+
+;rutina de interrupcion
+ISR_PCINT0:
+    push r16
+    in r16, SREG
+    push r16
+
+    ; Filtrar flanco: Solo actuar cuando el pin PB0 vaya a 0
+    in r16, PINB
+    sbrc r16, PB0
+    jmp fin_isr             
+
+    cbi PORTC, MOTOR_ABRIR
+    cbi PORTC, MOTOR_CERRAR
+    cbi PORTC, BUZZER
+    ldi flags, 1            ; Seteamos bandera de emergencia
+
+fin_isr:
+    pop r16
+    out SREG, r16
+    pop r16
+    reti
+
+initUART:
+    sts UBRR0L, r16
+    sts UBRR0H, r17
+    ldi r16, (1<<RXEN0)|(1<<TXEN0)
+    sts UCSR0B, r16
+    ret
+
+;subrutina imprecion de mensaje
+print_string:
+
+;leemos caracter y avanzamos una posicion
+next_char:
+    lpm r16, Z+
+    tst r16
+    breq fin_string
+
+;comprobamos si termino secuencia de bytes (¿== 0?)
+esperar_uart:
+    lds r17, UCSR0A
+    sbrs r17, UDRE0
+    rjmp esperar_uart
+
+    sts UDR0, r16
+    rjmp next_char
+
+fin_string:
+    ret
+
+;guardamos las siguientes secuencias de bytes en memoria FLASH -> mensaje + nueva linea (13, 10) + terminar secuencia (0)
+mensaje_abierta:
+    .db "Puerta abierta", 13, 10, 0
+mensaje_cerrando:
+    .db "Puerta cerrando", 13, 10, 0
+mensaje_cerrada:
+    .db "Puerta cerrada", 13, 10, 0
+mensaje_abriendo:
+    .db "Puerta abriendo", 13, 10, 0
+mensaje_obstaculo:
+    .db "Obstaculo detectado", 13, 10, 0
+mensaje_seguridad:
+    .db "Movimiento detenido por seguridad", 13, 10, 0
